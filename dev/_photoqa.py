@@ -126,6 +126,8 @@ def main():
              "tiling covers the frame exactly (%.6f / %d)" % (area, frame))
 
     gate("determinism: PASS" in body, "same parameters build the same tiling")
+    gate("multi-scale controls: PASS" in body,
+         "every multi-scale control changes the picture when driven through the DOM")
     gate("tab switch gen<->photo round trip: PASS" in body,
          "Generator <-> Photo tab switch is lossless")
 

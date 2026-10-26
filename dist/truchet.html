@@ -1656,11 +1656,18 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
    * motif smaller than ~12 px is mush, so the quadtree stops before it gets
    * there. The cap uses the EXPORT size, not the preview size, so the structure
    * on screen is the structure in the file. */
-  function maxDepth(L) {
+  /* How deep the quadtree MAY go here: a cell is never split below
+   * PHOTO_MIN_PX device pixels in the export, and that geometric limit is
+   * separate from the number the user asked for, because the detail slider needs
+   * to advertise only the range that can still do something. */
+  function depthCap(L) {
     const [fw, fh] = app.framePx();
     const pxPerUnit = Math.max(fw / L.cols, fh / L.rows);
     const bySize = Math.floor(Math.log2(Math.max(1, pxPerUnit / PHOTO_MIN_PX)));
-    return clamp(Math.min(P.depth, bySize), 0, PHOTO_MAX_DEPTH);
+    return clamp(bySize, 0, PHOTO_MAX_DEPTH);
+  }
+  function maxDepth(L) {
+    return clamp(Math.min(P.depth, depthCap(L)), 0, PHOTO_MAX_DEPTH);
   }
 
   /* The tiling. Two rules decide whether a cell splits:
@@ -1857,6 +1864,20 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
       el.addEventListener('input', () => { P[key] = +el.value; paint(); app.onChange(); });
       paint();
     };
+    /* These four are the whole multi-scale control surface, so they are wired
+     * here explicitly and dev/photoharness.js checks that each one changes the
+     * result. A missing listener is otherwise invisible on screen: syncLabel
+     * repaints the read-outs from P, so the numbers move while the pattern sits
+     * still - which is exactly the bug this wiring used to have. */
+    bindRange('inPdepth', 'depth', 'outPdepth');
+    bindRange('inPflat', 'flatness', 'outPflat');
+    bindRange('inPcon', 'contrast', 'outPcon');
+    const base = $('inBase');
+    if (base) {
+      base.value = String(app.baseScale().value);
+      base.addEventListener('input', () => app.setBaseScale(+base.value));
+    }
+
     const inv = $('chkPinvert');
     if (inv) {
       inv.checked = P.invert;
@@ -1912,7 +1933,21 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
       el.textContent = '';
     }
     const out = document.getElementById('outPdepth');
-    if (out) out.textContent = P.depth + ' levels';
+    if (out) {
+      /* Depth is capped by physics, not by the slider: this grid at this export
+       * resolution cannot subdivide past depthCap levels without tiles dropping
+       * under PHOTO_MIN_PX device pixels, and the tile budget can coarsen it
+       * further. Both are reported, and the slider is limited to what is
+       * reachable, so the range never runs into a stretch that does nothing. */
+      const cap = depthCap(app.lattice());
+      const el = document.getElementById('inPdepth');
+      if (el) el.max = String(Math.max(1, cap));
+      const used = Math.max(0, P.depthUsed);
+      let text = P.depth + ' levels';
+      if (cap < P.depth) text += ' \u2192 ' + cap + ' (capped: tiles stop at ' + PHOTO_MIN_PX + ' px)';
+      else if (used && used < cap) text += ' \u2192 ' + used + ' (tile budget)';
+      out.textContent = text;
+    }
     const outFlat = document.getElementById('outPflat');
     if (outFlat) outFlat.textContent = P.flatness + '%';
     const outCon = document.getElementById('outPcon');
@@ -1944,7 +1979,7 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
    * exactly this code path, not a copy of it). */
   app.hooks.photo = {
     loadFile, adopt, build, pickerFor, report, audit, tables, stats,
-    makeMap, maxDepth, bands, darkOf, bandError, wantDark, ask, imageTone,
+    makeMap, maxDepth, depthCap, bands, darkOf, bandError, wantDark, ask, imageTone,
     fileNameStub, wireUI, syncLabel,
     hasImage: () => !!P.image,
     state: () => P,

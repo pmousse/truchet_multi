@@ -24,7 +24,15 @@ Mandala one was built and then removed at the user's request, see below.
   deciding light vs dark. Gates: `python dev/_photoqa.py` -> quadtree audit
   clean, tile coverage exactly the frame area, determinism PASS, Generator<->
   Photo round trip PASS, no image data in the share link, mean tone error 0.034,
-  tone correlation 0.91 against pixels sampled from the real render.
+  tone correlation 0.91 against pixels sampled from the real render, and every
+  multi-scale control proven to change the result by driving the real DOM control
+  (read-outs are repainted from the state object, so a slider with no listener
+  still moves its number while the pattern sits still - that is exactly how the
+  dead `detail` / `smoothness` / `contrast` wiring hid: `bindRange` was defined in
+  `wireUI` and never called). `detail` is capped by geometry - tiles never split
+  below PHOTO_MIN_PX device pixels in the export - so its slider max is now set
+  live from `depthCap(lattice)` and the read-out reports the cap and the depth
+  actually used instead of sliding into a range that does nothing.
   The image is decoded locally and never enters the hash, so a Photo link reopens
   asking for the picture again.
 - Ink table (`MOTIF_INK` in `src/engine.js`) is measured, not modelled, and was

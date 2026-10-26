@@ -195,6 +195,68 @@
     if (digest2 !== digest) fail('the same parameters produced a different tiling');
     say('determinism: ' + (digest2 === digest ? 'PASS' : 'FAIL'));
 
+    /* ---------- every multi-scale control must change the picture ----------
+     * Driven through the DOM on purpose. The read-outs are repainted from the
+     * state object on every redraw, so a slider with no listener still moves its
+     * number while the pattern sits still - which is exactly how a wiring bug of
+     * that kind hid here. Depth, smoothness and base scale have to move the tile
+     * list; contrast and inversion have to move which motifs are picked. */
+    function snapshot() {
+      const ts = app.buildTiling();
+      const pk = ph.pickerFor(ts);
+      let tl = '', mo = '';
+      for (const t of ts) {
+        tl += t.x.toFixed(6) + ',' + t.y.toFixed(6) + ',' + t.s.toFixed(6) + ';';
+        mo += pk(T.tileDepth(t), t) + ',';
+      }
+      return { tiles: tl, motifs: mo, n: ts.length };
+    }
+    function driveControl(id, value) {
+      const el = document.getElementById(id);
+      if (!el) { fail('control missing from the page: ' + id); return false; }
+      const isCheck = el.type === 'checkbox';
+      if (isCheck) el.checked = !!value; else el.value = String(value);
+      el.dispatchEvent(new Event(isCheck ? 'change' : 'input'));
+      return true;
+    }
+    const original = {
+      inPdepth: ph.state().depth, inPflat: ph.state().flatness,
+      inPcon: ph.state().contrast, chkPinvert: ph.state().invert,
+      inBase: app.baseScale().value
+    };
+    const start = snapshot();
+    const bsMax = app.baseScale().max;
+    /* Depth is driven coarser, not finer: at this grid and export resolution the
+     * default already sits at the geometric cap, so pushing it up legitimately
+     * changes nothing (the slider now limits itself to what is reachable). Driving
+     * it to 1 must always collapse the subdivision, which proves the listener. */
+    const cases = [
+      ['inPdepth', 1, 'tiles'],
+      ['inPflat', 25, 'tiles'],
+      ['inBase', original.inBase === bsMax ? 1 : bsMax, 'tiles'],
+      ['inPcon', 200, 'motifs'],
+      ['chkPinvert', !original.chkPinvert, 'motifs']
+    ];
+    let controlsOk = true;
+    for (const [id, value, what] of cases) {
+      if (!driveControl(id, value)) { controlsOk = false; continue; }
+      const now = snapshot();
+      const moved = what === 'tiles' ? now.tiles !== start.tiles : now.motifs !== start.motifs;
+      if (!moved) {
+        fail('control ' + id + ' changed nothing: ' + what + ' digest identical');
+        controlsOk = false;
+      }
+      say('control ' + id + ': ' + (moved ? 'moves the ' + what
+        : 'DOES NOTHING (tiles ' + start.n + ' -> ' + now.n + ')'));
+    }
+    for (const [id, v] of Object.entries(original)) driveControl(id, v);
+    /* Measured after restoring, otherwise it reflects whatever the base-scale test
+     * left behind instead of the configuration the picture is built in. */
+    say('depth slider range advertised: ' +
+      document.getElementById('inPdepth').max +
+      ', geometric cap ' + ph.depthCap(app.lattice()));
+    say('multi-scale controls: ' + (controlsOk ? 'PASS' : 'FAIL'));
+
     /* ---------- the image must stay out of the share link ---------- */
     const href = location.hash;
     if (/image|lum|sat|data:|blob:/i.test(href)) {
