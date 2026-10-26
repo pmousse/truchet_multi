@@ -796,13 +796,14 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     if (S.format === 'custom') {
       return [clamp(Math.round(S.fw), 32, 8192), clamp(Math.round(S.fh), 32, 8192)];
     }
-    /* Presets: the long edge follows the chosen resolution, snapped so the
-     * pixel size is an exact multiple of the tile lattice — 16:9 at 4K lands
-     * on 3840 x 2160, at 2K on 2048 x 1152. */
-    const L = lattice();
+    /* Presets: the long edge is exactly the chosen resolution (1K / 2K / 4K),
+     * the short edge is the frame ratio applied to it. Any sub-pixel ratio
+     * residue is absorbed by cover scaling in drawScene. */
+    const [p, q] = FRAME_FORMATS[S.format] || [1, 1];
     const res = clamp(Math.round(S.res), 64, 8192);
-    const k = Math.max(1, Math.round(res / Math.max(L.cols, L.rows)));
-    return [L.cols * k, L.rows * k];
+    return p >= q
+      ? [res, Math.max(1, Math.round(res * q / p))]
+      : [Math.max(1, Math.round(res * p / q)), res];
   }
   function frameRatio() {              // frame ratio as integers p:q
     if (S.format === 'custom') {

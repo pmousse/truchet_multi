@@ -183,11 +183,13 @@ What replaced the old behaviour:
 - Frame formats in `src/app.js` `FRAME_FORMATS`: 1:1, 16:9, 9:16, 21:9, 4:3,
   3:4, 3:2, 2:3, 5:4, 4:5, 2:1, 1:2, custom W x H. Long-edge presets 1K/2K/
   2.5K/4K(3840)/4K+(4096).
-- Preset export sizes are snapped to a whole multiple of the lattice, so 16:9
-  at 4K is exactly **3840 x 2160**, at 2K exactly 2048 x 1152. Custom sizes are
-  used verbatim; `reduceRatio()` (gcd, then continued-fraction convergents
-  capped at `MAX_LATTICE_SIDE = 40`) picks the nearest lattice, and cover
-  scaling clips the sub-1% sliver.
+- Preset export sizes keep the long edge exactly at the chosen resolution
+  (1K/2K/2.5K/4K = 3840/4K+ = 4096) and derive the short edge from the frame
+  ratio: 16:9 at 4K is **3840 x 2160**, 1:1 at 2K is 2048 x 2048, 4:5 at 4K is
+  3072 x 3840. Sub-pixel ratio residue (21:9 is the worst, ~1 px) is absorbed by
+  cover scaling. Custom sizes are used verbatim; `reduceRatio()` (gcd, then
+  continued-fraction convergents capped at `MAX_LATTICE_SIDE = 40`) picks the
+  nearest lattice.
 - `n` is now a *density* control: it is snapped to the frame ratio, so 16:9
   quantizes the short side to multiples of 9 (9, 18, 27...). The panel prints
   `16 × 9 tiles · 3840 × 2160 px` in `#frameInfo` so the snap is visible, not
