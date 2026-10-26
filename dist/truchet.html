@@ -67,9 +67,8 @@ input, select, button {
   background: #1d1e25; border: 1px solid var(--panel-line);
   border-radius: 5px; padding: 5px 8px;
 }
-input[type="number"] { width: 64px; }
+input[type="number"] { width: 76px; min-width: 0; }
 input[type="text"] { width: 110px; }
-input[type="range"] { flex: 1; accent-color: var(--accent); }
 input[type="color"] { width: 42px; height: 28px; padding: 2px; }
 select { max-width: 100%; }
 button.action { cursor: pointer; }
@@ -176,10 +175,13 @@ label.check { display: flex; align-items: center; color: var(--panel-fg); }
       <option value="sur">surround</option>
       <option value="off">offset surround</option>
     </select></div>
-    <div class="row" id="rowN"><label>density</label><input type="range" id="inN" min="1" max="12" step="1">
+    <div class="row" id="rowN"><label>density</label>
+      <input type="number" id="inN" min="1" max="32" step="1" inputmode="numeric">
       <span id="outN" class="info"></span></div>
-    <div class="row wrap" id="rowRand"><label>splits</label><input type="number" id="inSplits" min="1" max="400">
-      <label>max depth</label><input type="number" id="inMaxd" min="1" max="10"></div>
+    <div class="row wrap" id="rowRand"><label>splits</label>
+      <input type="number" id="inSplits" min="1" max="400" inputmode="numeric">
+      <label>max depth</label>
+      <input type="number" id="inMaxd" min="1" max="10" inputmode="numeric"></div>
 
     <div class="sect">Frame</div>
     <div class="row"><select id="selFormat">
@@ -212,14 +214,16 @@ label.check { display: flex; align-items: center; color: var(--panel-fg); }
     <div class="row"><span id="photoName" class="info"></span></div>
     <div class="row"><span class="hint">or drop one on the canvas / paste it &mdash; it is read locally, never uploaded, and is not part of a share link</span></div>
     <div class="sect">Multi-scale</div>
-    <div class="row"><label>base scale</label><input type="range" id="inBase" min="1" max="12" step="1">
+    <div class="row"><label>base scale</label>
+      <input type="number" id="inBase" min="1" max="12" step="1" inputmode="numeric">
       <span id="outBase" class="info"></span></div>
-    <div class="row"><label>detail</label><input type="range" id="inPdepth" min="1" max="8" step="1">
+    <div class="row"><label>detail</label>
+      <input type="number" id="inPdepth" min="1" max="8" step="1" inputmode="numeric">
       <span id="outPdepth" class="info"></span></div>
-    <div class="row"><label>smoothness</label><input type="range" id="inPflat" min="0" max="30" step="1">
-      <span id="outPflat" class="info"></span></div>
-    <div class="row"><label>contrast</label><input type="range" id="inPcon" min="20" max="250" step="5">
-      <span id="outPcon" class="info"></span></div>
+    <div class="row"><label>smoothness %</label>
+      <input type="number" id="inPflat" min="0" max="30" step="1" inputmode="numeric"></div>
+    <div class="row"><label>contrast %</label>
+      <input type="number" id="inPcon" min="20" max="250" step="5" inputmode="numeric"></div>
     <div class="row"><label class="check"><input type="checkbox" id="chkPinvert"> invert tones</label></div>
     <div class="row"><span class="hint">detail = how deep the quadtree may split; smoothness = how uniform a region must be before it stops splitting</span></div>
     </div><!-- /photoParams -->
@@ -260,7 +264,8 @@ label.check { display: flex; align-items: center; color: var(--panel-fg); }
         <option value="3840">4K (3840 px)</option>
         <option value="4096">4K+ (4096 px)</option>
       </select></div>
-    <div class="row"><label>margin</label><input type="range" id="inPad" min="0" max="20" step="1"><span id="outPad"></span></div>
+    <div class="row"><label>margin %</label>
+      <input type="number" id="inPad" min="0" max="20" step="1" inputmode="numeric"></div>
     <div class="row"><span id="frameInfo" class="info"></span></div>
 
     <div class="sect">Export PNG</div>
@@ -931,7 +936,7 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
    * checkerboard case available while capping the surround tilings. */
   const MAX_LATTICE_TILES = 8000;
   /* Absolute ceiling on the density multiplier, independent of frame: it exists
-   * so the slider has a sane top end (at x32 a 1:1 frame is 32x32 cells and a
+   * so the density box has a sane top end (at x32 a 1:1 frame is 32x32 cells and a
    * tile is still ~64 px at 2048 px, i.e. a motif rather than noise). The tile
    * cap above is what actually binds for wide frames. */
   const MAX_DENSITY_STEP = 32;
@@ -1234,15 +1239,14 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
   };
   function pushToInputs() {
     $('selTiling').value = S.tiling;
-    $('inN').value = S.n;
-    $('outN').textContent = '×' + lattice().t;
+    $('inN').value = S.n;              // its read-out lives in refreshParamVisibility
     $('selFormat').value = S.format;
     $('inFrameW').value = S.fw; $('inFrameH').value = S.fh;
     $('selRes').value = String(S.res);
     $('inSplits').value = S.splits; $('inMaxd').value = S.maxd;
     $('inSeed').value = S.seed; $('selPal').value = S.pal;
     $('inC1').value = S.c1; $('inC2').value = S.c2; $('inBg').value = S.bg;
-    $('inPad').value = S.pad; $('outPad').textContent = S.pad + '%';
+    $('inPad').value = S.pad;
   }
   function refreshParamVisibility() {
     const show = (id, on) => $(id).style.display = on ? '' : 'none';
@@ -1263,9 +1267,12 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
      * control honest instead of silently saturating. */
     const maxT = latticeMaxT();
     $('inN').max = String(maxT);
-    S.n = clamp(Math.round(S.n) || 1, 1, maxT);
+    const typed = Math.round(S.n) || 1;
+    S.n = clamp(typed, 1, maxT);
     $('inN').value = S.n;
-    $('outN').textContent = '×' + lattice().t;
+    /* Say something only when the cap has overridden what was typed. */
+    $('outN').textContent = (typed !== S.n)
+      ? '\u2192 ' + S.n + ' (capped by frame and tile budget)' : '';
   }
   function initTabs() {
     /* Tabs not yet registered (Photo registers itself after app.js) stay as they
@@ -1282,9 +1289,23 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
   }
   for (const [k, id] of Object.entries(FIELDS)) {
     $(id).addEventListener('input', () => {
-      const v = $(id).value;
-      S[k] = (typeof DEFAULTS[k] === 'number') ? +v : v;
-      if (k === 'pad') $('outPad').textContent = S.pad + '%';
+      const el = $(id);
+      const raw = el.value;
+      if (typeof DEFAULTS[k] === 'number') {
+        /* A number box has no track to lean on, so the element's own min/max are
+         * what bounds the state. A cleared or half-typed box ("", "-", "1e") is not
+         * a change yet and is ignored - note that +'' is 0, so an empty box would
+         * otherwise silently apply the minimum on the way to the number wanted. */
+        if (el.validity && el.validity.badInput) return;
+        if (!raw.trim()) return;
+        const v = +raw;
+        if (!Number.isFinite(v)) return;
+        const lo = el.min === '' ? -Infinity : +el.min;
+        const hi = el.max === '' ? Infinity : +el.max;
+        S[k] = clamp(v, lo, hi);
+      } else {
+        S[k] = raw;
+      }
       onChange();
     });
   }
@@ -1551,7 +1572,7 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
   /* Summed area tables of luminance and luminance squared, so a quadtree query
    * costs four array reads rather than a walk over the pixels in the cell.
    * Contrast is folded in here rather than at sampling time: moving the contrast
-   * slider rebuilds the tables without decoding the image again. */
+   * box rebuilds the tables without decoding the image again. */
   function tables() {
     const im = P.image;
     if (!im) return null;
@@ -1658,8 +1679,8 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
    * on screen is the structure in the file. */
   /* How deep the quadtree MAY go here: a cell is never split below
    * PHOTO_MIN_PX device pixels in the export, and that geometric limit is
-   * separate from the number the user asked for, because the detail slider needs
-   * to advertise only the range that can still do something. */
+   * separate from the number the user asked for, because the detail box needs to
+   * advertise only the range that can still do something. */
   function depthCap(L) {
     const [fw, fh] = app.framePx();
     const pxPerUnit = Math.max(fw / L.cols, fh / L.rows);
@@ -1855,23 +1876,27 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
   /* ---------- panel wiring (this file owns the Photo controls) ---------- */
   function wireUI() {
     const $ = (id) => document.getElementById(id);
-    const bindRange = (id, key, outId, suffix) => {
+    const bindNumber = (id, key) => {
       const el = $(id);
       if (!el) return;
       el.value = String(P[key]);
-      const out = $(outId);
-      const paint = () => { if (out) out.textContent = P[key] + (suffix || ''); };
-      el.addEventListener('input', () => { P[key] = +el.value; paint(); app.onChange(); });
-      paint();
+      el.addEventListener('input', () => {
+        if (el.validity && el.validity.badInput) return;   // "-", "1e": mid-typing
+        if (!el.value.trim()) return;                       // cleared: +'' is 0
+        const v = +el.value;
+        if (!Number.isFinite(v)) return;
+        P[key] = clamp(v, +el.min, +el.max);
+        app.onChange();
+      });
     };
     /* These four are the whole multi-scale control surface, so they are wired
      * here explicitly and dev/photoharness.js checks that each one changes the
      * result. A missing listener is otherwise invisible on screen: syncLabel
      * repaints the read-outs from P, so the numbers move while the pattern sits
      * still - which is exactly the bug this wiring used to have. */
-    bindRange('inPdepth', 'depth', 'outPdepth');
-    bindRange('inPflat', 'flatness', 'outPflat');
-    bindRange('inPcon', 'contrast', 'outPcon');
+    bindNumber('inPdepth', 'depth');
+    bindNumber('inPflat', 'flatness');
+    bindNumber('inPcon', 'contrast');
     const base = $('inBase');
     if (base) {
       base.value = String(app.baseScale().value);
@@ -1934,31 +1959,28 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     }
     const out = document.getElementById('outPdepth');
     if (out) {
-      /* Depth is capped by physics, not by the slider: this grid at this export
+      /* Depth is capped by physics, not by the input: this grid at this export
        * resolution cannot subdivide past depthCap levels without tiles dropping
        * under PHOTO_MIN_PX device pixels, and the tile budget can coarsen it
-       * further. Both are reported, and the slider is limited to what is
-       * reachable, so the range never runs into a stretch that does nothing. */
+       * further. The box only advertises the reachable range, and the read-out is
+       * silent unless a cap has taken over from what was typed. */
       const cap = depthCap(app.lattice());
       const el = document.getElementById('inPdepth');
       if (el) el.max = String(Math.max(1, cap));
       const used = Math.max(0, P.depthUsed);
-      let text = P.depth + ' levels';
-      if (cap < P.depth) text += ' \u2192 ' + cap + ' (capped: tiles stop at ' + PHOTO_MIN_PX + ' px)';
-      else if (used && used < cap) text += ' \u2192 ' + used + ' (tile budget)';
-      out.textContent = text;
+      out.textContent = (cap < P.depth)
+        ? '\u2192 ' + cap + ' (tiles stop at ' + PHOTO_MIN_PX + ' px)'
+        : (used && used < cap) ? '\u2192 ' + used + ' (tile budget)' : '';
     }
-    const outFlat = document.getElementById('outPflat');
-    if (outFlat) outFlat.textContent = P.flatness + '%';
-    const outCon = document.getElementById('outPcon');
-    if (outCon) outCon.textContent = P.contrast + '%';
     const base = document.getElementById('inBase');
     if (base) {
       const bs = app.baseScale();
       base.max = String(bs.max);
-      base.value = String(clamp(P.base, 1, bs.max));
+      /* Never overwrite the box while someone is typing in it. */
+      if (document.activeElement !== base) base.value = String(bs.value);
       const lbl = document.getElementById('outBase');
-      if (lbl) lbl.textContent = '\u00d7' + app.lattice().t;
+      lbl.textContent = (bs.value !== bs.max && +base.value > bs.value)
+        ? '\u2192 ' + bs.value + ' (capped by frame and tile budget)' : '';
     }
   }
 

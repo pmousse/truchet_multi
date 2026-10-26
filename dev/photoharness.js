@@ -197,7 +197,7 @@
 
     /* ---------- every multi-scale control must change the picture ----------
      * Driven through the DOM on purpose. The read-outs are repainted from the
-     * state object on every redraw, so a slider with no listener still moves its
+     * state object on every redraw, so a control with no listener still moves its
      * number while the pattern sits still - which is exactly how a wiring bug of
      * that kind hid here. Depth, smoothness and base scale have to move the tile
      * list; contrast and inversion have to move which motifs are picked. */
@@ -228,7 +228,7 @@
     const bsMax = app.baseScale().max;
     /* Depth is driven coarser, not finer: at this grid and export resolution the
      * default already sits at the geometric cap, so pushing it up legitimately
-     * changes nothing (the slider now limits itself to what is reachable). Driving
+     * changes nothing (the detail box now limits itself to what is reachable). Driving
      * it to 1 must always collapse the subdivision, which proves the listener. */
     const cases = [
       ['inPdepth', 1, 'tiles'],
@@ -252,7 +252,7 @@
     for (const [id, v] of Object.entries(original)) driveControl(id, v);
     /* Measured after restoring, otherwise it reflects whatever the base-scale test
      * left behind instead of the configuration the picture is built in. */
-    say('depth slider range advertised: ' +
+    say('depth box range advertised: ' +
       document.getElementById('inPdepth').max +
       ', geometric cap ' + ph.depthCap(app.lattice()));
     say('multi-scale controls: ' + (controlsOk ? 'PASS' : 'FAIL'));
@@ -273,6 +273,42 @@
     if (document.getElementById('photoParams').offsetParent !== null) {
       fail('photo params block still shown after switching to Generator');
     }
+    /* ---------- the Generator's number boxes must work through the DOM too ------
+     * Same class of bug as the Photo tab's dead controls, plus the traps specific
+     * to number inputs: a value outside min/max, and a box cleared mid-typing
+     * (+'' is 0, which would silently apply the minimum). */
+    const G = app.state();
+    const genOriginal = { n: G.n, pad: G.pad };
+    const genSnap = () => app.buildTiling().map((t) =>
+      t.x.toFixed(6) + ',' + t.y.toFixed(6) + ',' + t.s.toFixed(6)).join(';');
+    let genOk = true;
+    const genStart = genSnap();
+    const nMax = +document.getElementById('inN').max;
+    driveControl('inN', Math.min(8, nMax));
+    if (genSnap() === genStart) {
+      fail('Generator density changed nothing');
+      genOk = false;
+    }
+    say('density inN: ' + (genSnap() !== genStart ? 'moves the tiles' : 'DOES NOTHING'));
+
+    driveControl('inPad', 999);
+    if (G.pad !== +document.getElementById('inPad').max) {
+      fail('margin 999 was not clamped to the input max (state is ' + G.pad + ')');
+      genOk = false;
+    }
+    say('margin out of range: clamped to ' + G.pad);
+
+    driveControl('inPad', '');
+    if (G.pad !== +document.getElementById('inPad').max) {
+      fail('a cleared margin box changed the state to ' + G.pad);
+      genOk = false;
+    }
+    say('cleared margin box: ignored, state stays ' + G.pad);
+
+    driveControl('inN', genOriginal.n);
+    driveControl('inPad', genOriginal.pad);
+    say('generator controls: ' + (genOk ? 'PASS' : 'FAIL'));
+
     app.setTab('photo');
     if (!ph.hasImage()) fail('the photo image was lost when switching tabs');
     if (!app.buildTiling().length) fail('photo tiling lost when switching back');

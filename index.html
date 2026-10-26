@@ -39,10 +39,13 @@
       <option value="sur">surround</option>
       <option value="off">offset surround</option>
     </select></div>
-    <div class="row" id="rowN"><label>density</label><input type="range" id="inN" min="1" max="12" step="1">
+    <div class="row" id="rowN"><label>density</label>
+      <input type="number" id="inN" min="1" max="32" step="1" inputmode="numeric">
       <span id="outN" class="info"></span></div>
-    <div class="row wrap" id="rowRand"><label>splits</label><input type="number" id="inSplits" min="1" max="400">
-      <label>max depth</label><input type="number" id="inMaxd" min="1" max="10"></div>
+    <div class="row wrap" id="rowRand"><label>splits</label>
+      <input type="number" id="inSplits" min="1" max="400" inputmode="numeric">
+      <label>max depth</label>
+      <input type="number" id="inMaxd" min="1" max="10" inputmode="numeric"></div>
 
     <div class="sect">Frame</div>
     <div class="row"><select id="selFormat">
@@ -75,14 +78,16 @@
     <div class="row"><span id="photoName" class="info"></span></div>
     <div class="row"><span class="hint">or drop one on the canvas / paste it &mdash; it is read locally, never uploaded, and is not part of a share link</span></div>
     <div class="sect">Multi-scale</div>
-    <div class="row"><label>base scale</label><input type="range" id="inBase" min="1" max="12" step="1">
+    <div class="row"><label>base scale</label>
+      <input type="number" id="inBase" min="1" max="12" step="1" inputmode="numeric">
       <span id="outBase" class="info"></span></div>
-    <div class="row"><label>detail</label><input type="range" id="inPdepth" min="1" max="8" step="1">
+    <div class="row"><label>detail</label>
+      <input type="number" id="inPdepth" min="1" max="8" step="1" inputmode="numeric">
       <span id="outPdepth" class="info"></span></div>
-    <div class="row"><label>smoothness</label><input type="range" id="inPflat" min="0" max="30" step="1">
-      <span id="outPflat" class="info"></span></div>
-    <div class="row"><label>contrast</label><input type="range" id="inPcon" min="20" max="250" step="5">
-      <span id="outPcon" class="info"></span></div>
+    <div class="row"><label>smoothness %</label>
+      <input type="number" id="inPflat" min="0" max="30" step="1" inputmode="numeric"></div>
+    <div class="row"><label>contrast %</label>
+      <input type="number" id="inPcon" min="20" max="250" step="5" inputmode="numeric"></div>
     <div class="row"><label class="check"><input type="checkbox" id="chkPinvert"> invert tones</label></div>
     <div class="row"><span class="hint">detail = how deep the quadtree may split; smoothness = how uniform a region must be before it stops splitting</span></div>
     </div><!-- /photoParams -->
@@ -123,7 +128,8 @@
         <option value="3840">4K (3840 px)</option>
         <option value="4096">4K+ (4096 px)</option>
       </select></div>
-    <div class="row"><label>margin</label><input type="range" id="inPad" min="0" max="20" step="1"><span id="outPad"></span></div>
+    <div class="row"><label>margin %</label>
+      <input type="number" id="inPad" min="0" max="20" step="1" inputmode="numeric"></div>
     <div class="row"><span id="frameInfo" class="info"></span></div>
 
     <div class="sect">Export PNG</div>

@@ -116,7 +116,7 @@
   /* Summed area tables of luminance and luminance squared, so a quadtree query
    * costs four array reads rather than a walk over the pixels in the cell.
    * Contrast is folded in here rather than at sampling time: moving the contrast
-   * slider rebuilds the tables without decoding the image again. */
+   * box rebuilds the tables without decoding the image again. */
   function tables() {
     const im = P.image;
     if (!im) return null;
@@ -223,8 +223,8 @@
    * on screen is the structure in the file. */
   /* How deep the quadtree MAY go here: a cell is never split below
    * PHOTO_MIN_PX device pixels in the export, and that geometric limit is
-   * separate from the number the user asked for, because the detail slider needs
-   * to advertise only the range that can still do something. */
+   * separate from the number the user asked for, because the detail box needs to
+   * advertise only the range that can still do something. */
   function depthCap(L) {
     const [fw, fh] = app.framePx();
     const pxPerUnit = Math.max(fw / L.cols, fh / L.rows);
@@ -420,23 +420,27 @@
   /* ---------- panel wiring (this file owns the Photo controls) ---------- */
   function wireUI() {
     const $ = (id) => document.getElementById(id);
-    const bindRange = (id, key, outId, suffix) => {
+    const bindNumber = (id, key) => {
       const el = $(id);
       if (!el) return;
       el.value = String(P[key]);
-      const out = $(outId);
-      const paint = () => { if (out) out.textContent = P[key] + (suffix || ''); };
-      el.addEventListener('input', () => { P[key] = +el.value; paint(); app.onChange(); });
-      paint();
+      el.addEventListener('input', () => {
+        if (el.validity && el.validity.badInput) return;   // "-", "1e": mid-typing
+        if (!el.value.trim()) return;                       // cleared: +'' is 0
+        const v = +el.value;
+        if (!Number.isFinite(v)) return;
+        P[key] = clamp(v, +el.min, +el.max);
+        app.onChange();
+      });
     };
     /* These four are the whole multi-scale control surface, so they are wired
      * here explicitly and dev/photoharness.js checks that each one changes the
      * result. A missing listener is otherwise invisible on screen: syncLabel
      * repaints the read-outs from P, so the numbers move while the pattern sits
      * still - which is exactly the bug this wiring used to have. */
-    bindRange('inPdepth', 'depth', 'outPdepth');
-    bindRange('inPflat', 'flatness', 'outPflat');
-    bindRange('inPcon', 'contrast', 'outPcon');
+    bindNumber('inPdepth', 'depth');
+    bindNumber('inPflat', 'flatness');
+    bindNumber('inPcon', 'contrast');
     const base = $('inBase');
     if (base) {
       base.value = String(app.baseScale().value);
@@ -499,31 +503,28 @@
     }
     const out = document.getElementById('outPdepth');
     if (out) {
-      /* Depth is capped by physics, not by the slider: this grid at this export
+      /* Depth is capped by physics, not by the input: this grid at this export
        * resolution cannot subdivide past depthCap levels without tiles dropping
        * under PHOTO_MIN_PX device pixels, and the tile budget can coarsen it
-       * further. Both are reported, and the slider is limited to what is
-       * reachable, so the range never runs into a stretch that does nothing. */
+       * further. The box only advertises the reachable range, and the read-out is
+       * silent unless a cap has taken over from what was typed. */
       const cap = depthCap(app.lattice());
       const el = document.getElementById('inPdepth');
       if (el) el.max = String(Math.max(1, cap));
       const used = Math.max(0, P.depthUsed);
-      let text = P.depth + ' levels';
-      if (cap < P.depth) text += ' \u2192 ' + cap + ' (capped: tiles stop at ' + PHOTO_MIN_PX + ' px)';
-      else if (used && used < cap) text += ' \u2192 ' + used + ' (tile budget)';
-      out.textContent = text;
+      out.textContent = (cap < P.depth)
+        ? '\u2192 ' + cap + ' (tiles stop at ' + PHOTO_MIN_PX + ' px)'
+        : (used && used < cap) ? '\u2192 ' + used + ' (tile budget)' : '';
     }
-    const outFlat = document.getElementById('outPflat');
-    if (outFlat) outFlat.textContent = P.flatness + '%';
-    const outCon = document.getElementById('outPcon');
-    if (outCon) outCon.textContent = P.contrast + '%';
     const base = document.getElementById('inBase');
     if (base) {
       const bs = app.baseScale();
       base.max = String(bs.max);
-      base.value = String(clamp(P.base, 1, bs.max));
+      /* Never overwrite the box while someone is typing in it. */
+      if (document.activeElement !== base) base.value = String(bs.value);
       const lbl = document.getElementById('outBase');
-      if (lbl) lbl.textContent = '\u00d7' + app.lattice().t;
+      lbl.textContent = (bs.value !== bs.max && +base.value > bs.value)
+        ? '\u2192 ' + bs.value + ' (capped by frame and tile budget)' : '';
     }
   }
 

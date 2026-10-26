@@ -128,6 +128,8 @@ def main():
     gate("determinism: PASS" in body, "same parameters build the same tiling")
     gate("multi-scale controls: PASS" in body,
          "every multi-scale control changes the picture when driven through the DOM")
+    gate("generator controls: PASS" in body,
+         "Generator number boxes move the tiling, clamp out-of-range values and ignore cleared boxes")
     gate("tab switch gen<->photo round trip: PASS" in body,
          "Generator <-> Photo tab switch is lossless")
 

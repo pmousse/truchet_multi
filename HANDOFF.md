@@ -26,13 +26,13 @@ Mandala one was built and then removed at the user's request, see below.
   Photo round trip PASS, no image data in the share link, mean tone error 0.034,
   tone correlation 0.91 against pixels sampled from the real render, and every
   multi-scale control proven to change the result by driving the real DOM control
-  (read-outs are repainted from the state object, so a slider with no listener
+  (read-outs are repainted from the state object, so a control with no listener
   still moves its number while the pattern sits still - that is exactly how the
   dead `detail` / `smoothness` / `contrast` wiring hid: `bindRange` was defined in
   `wireUI` and never called). `detail` is capped by geometry - tiles never split
-  below PHOTO_MIN_PX device pixels in the export - so its slider max is now set
-  live from `depthCap(lattice)` and the read-out reports the cap and the depth
-  actually used instead of sliding into a range that does nothing.
+  below PHOTO_MIN_PX device pixels in the export - so its max is now set live from
+  `depthCap(lattice)` and the read-out reports the cap and the depth actually used
+  instead of offering a range that does nothing.
   The image is decoded locally and never enters the hash, so a Photo link reopens
   asking for the picture again.
 - Ink table (`MOTIF_INK` in `src/engine.js`) is measured, not modelled, and was
@@ -225,10 +225,17 @@ What replaced the old behaviour:
   cover scaling. Custom sizes are used verbatim; `reduceRatio()` (gcd, then
   continued-fraction convergents capped at `MAX_LATTICE_SIDE = 64`) picks the
   nearest lattice.
-- `n` is now a **density multiplier slider** (`density ×1 … ×N`), not a raw tile
-  count. Square tiles only tile a p:q rectangle in multiples of (p, q), so the
-  lattice is (p·t) × (q·t) and the slider controls `t` directly — every step
-  changes the grid. The slider's max is recomputed per format from the caps
+- Every numeric parameter is a **number input**, not a range slider (density,
+  base scale, detail, smoothness, contrast, margin, splits, max depth, custom
+  frame size): `inputmode="numeric"`, and the element's own min/max are what
+  bound the state. A cleared or half-typed box is ignored rather than applied —
+  `+''` is `0`, which would otherwise slam a control to its minimum on the way to
+  the number being typed. Units live in the labels (`margin %`, `contrast %`), and
+  the only read-outs left are the ones that report a cap taking over.
+- `n` is a **density multiplier** (`density ×1 … ×N`), not a raw tile count.
+  Square tiles only tile a p:q rectangle in multiples of (p, q), so the lattice is
+  (p·t) × (q·t) and the box controls `t` directly — every step changes the grid.
+  Its max is recomputed per format from the caps
   (`MAX_LATTICE_SIDE = 64`, `MAX_LATTICE_TILES = 5000`), so 1:1 goes to ×16,
   16:9 to ×4 (64 × 36 tiles), 21:9 to ×3, 4:5 to ×12; the value is clamped on
   format change instead of saturating silently. This replaced the old
@@ -363,7 +370,7 @@ per checkerboard cell and ~6 per surround unit, so 64x36 cells = 5760 tiles and
 a surround lattice at the same size = 14125. `MAX_LATTICE_TILES` now counts
 tiles actually drawn (8000), `latticeMaxT()` estimates the expansion factor from
 the base lattice and then trims by counting the real tiling, and a separate
-`MAX_DENSITY_STEP = 32` ceiling keeps the slider's top end sane. Consequence the
+`MAX_DENSITY_STEP = 32` ceiling keeps the density box's top end sane. Consequence the
 user will notice: surround/offset on 16:9 clamp from x4 down to x2 (3607 tiles)
 because x4 would emit 14125. The panel line now reports both quantities -
 "64 x 36 cells x4 - 5760 tiles - 3840 x 2160 px" - and 'units' rather than

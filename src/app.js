@@ -104,7 +104,7 @@
    * checkerboard case available while capping the surround tilings. */
   const MAX_LATTICE_TILES = 8000;
   /* Absolute ceiling on the density multiplier, independent of frame: it exists
-   * so the slider has a sane top end (at x32 a 1:1 frame is 32x32 cells and a
+   * so the density box has a sane top end (at x32 a 1:1 frame is 32x32 cells and a
    * tile is still ~64 px at 2048 px, i.e. a motif rather than noise). The tile
    * cap above is what actually binds for wide frames. */
   const MAX_DENSITY_STEP = 32;
@@ -407,15 +407,14 @@
   };
   function pushToInputs() {
     $('selTiling').value = S.tiling;
-    $('inN').value = S.n;
-    $('outN').textContent = '×' + lattice().t;
+    $('inN').value = S.n;              // its read-out lives in refreshParamVisibility
     $('selFormat').value = S.format;
     $('inFrameW').value = S.fw; $('inFrameH').value = S.fh;
     $('selRes').value = String(S.res);
     $('inSplits').value = S.splits; $('inMaxd').value = S.maxd;
     $('inSeed').value = S.seed; $('selPal').value = S.pal;
     $('inC1').value = S.c1; $('inC2').value = S.c2; $('inBg').value = S.bg;
-    $('inPad').value = S.pad; $('outPad').textContent = S.pad + '%';
+    $('inPad').value = S.pad;
   }
   function refreshParamVisibility() {
     const show = (id, on) => $(id).style.display = on ? '' : 'none';
@@ -436,9 +435,12 @@
      * control honest instead of silently saturating. */
     const maxT = latticeMaxT();
     $('inN').max = String(maxT);
-    S.n = clamp(Math.round(S.n) || 1, 1, maxT);
+    const typed = Math.round(S.n) || 1;
+    S.n = clamp(typed, 1, maxT);
     $('inN').value = S.n;
-    $('outN').textContent = '×' + lattice().t;
+    /* Say something only when the cap has overridden what was typed. */
+    $('outN').textContent = (typed !== S.n)
+      ? '\u2192 ' + S.n + ' (capped by frame and tile budget)' : '';
   }
   function initTabs() {
     /* Tabs not yet registered (Photo registers itself after app.js) stay as they
@@ -455,9 +457,23 @@
   }
   for (const [k, id] of Object.entries(FIELDS)) {
     $(id).addEventListener('input', () => {
-      const v = $(id).value;
-      S[k] = (typeof DEFAULTS[k] === 'number') ? +v : v;
-      if (k === 'pad') $('outPad').textContent = S.pad + '%';
+      const el = $(id);
+      const raw = el.value;
+      if (typeof DEFAULTS[k] === 'number') {
+        /* A number box has no track to lean on, so the element's own min/max are
+         * what bounds the state. A cleared or half-typed box ("", "-", "1e") is not
+         * a change yet and is ignored - note that +'' is 0, so an empty box would
+         * otherwise silently apply the minimum on the way to the number wanted. */
+        if (el.validity && el.validity.badInput) return;
+        if (!raw.trim()) return;
+        const v = +raw;
+        if (!Number.isFinite(v)) return;
+        const lo = el.min === '' ? -Infinity : +el.min;
+        const hi = el.max === '' ? Infinity : +el.max;
+        S[k] = clamp(v, lo, hi);
+      } else {
+        S[k] = raw;
+      }
       onChange();
     });
   }

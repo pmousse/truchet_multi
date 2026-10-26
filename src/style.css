@@ -60,9 +60,8 @@ input, select, button {
   background: #1d1e25; border: 1px solid var(--panel-line);
   border-radius: 5px; padding: 5px 8px;
 }
-input[type="number"] { width: 64px; }
+input[type="number"] { width: 76px; min-width: 0; }
 input[type="text"] { width: 110px; }
-input[type="range"] { flex: 1; accent-color: var(--accent); }
 input[type="color"] { width: 42px; height: 28px; padding: 2px; }
 select { max-width: 100%; }
 button.action { cursor: pointer; }
