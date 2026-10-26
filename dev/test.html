@@ -39,7 +39,10 @@ const canvasTiles = () => {
     const x0 = pad + (k % cols) * (cell + pad);
     const y0 = pad + Math.floor(k / cols) * (cell + pad);
     ctx.save();
-    ctx.translate(x0, y0 + cell);
+    ctx.beginPath();
+    ctx.rect(x0, y0, cell, cell);
+    ctx.clip();                        // wings legitimately spill past the
+    ctx.translate(x0, y0 + cell);      // unit square; clip to the cell
     ctx.scale(cell, -cell);            // math y-up
     Truchet.renderTiling(ctx, [{ x: 0, y: 0, s: 1 }], {
       pickTile: () => idx,
@@ -67,8 +70,17 @@ draw('c_checker', Truchet.checkerboardTiling(4),
   () => Truchet.connIdxByName('/'), Truchet.PALETTES.bw);
 {
   const rnd = Truchet.mulberry32(Truchet.seedFromString('k7x2m9'));
-  draw('c_rand', Truchet.randomSubdivision(rnd, 12),
-    (d) => 1 + Math.floor(rnd() * 24), Truchet.PALETTES.bw);
+  const tiles = Truchet.randomSubdivision(rnd, 12);
+  // stable per-tile motif assignment: fresh PRNG keyed by sorted tiles,
+  // so the mapping survives re-renders (resize, export at other sizes)
+  const assign = new Map();
+  const rnd2 = Truchet.mulberry32(Truchet.seedFromString('k7x2m9'));
+  tiles.slice().sort((a, b) =>
+    (a.x - b.x) || (a.y - b.y) || (a.s - b.s)).forEach(t => {
+      assign.set(`${t.x},${t.y},${t.s}`, 1 + Math.floor(rnd2() * 24));
+    });
+  draw('c_rand', tiles,
+    (d, t) => assign.get(`${t.x},${t.y},${t.s}`), Truchet.PALETTES.bw);
 }
 draw('c_surround', Truchet.surroundTiling(3),
   () => Truchet.connIdxByName('/'), Truchet.PALETTES.bw);

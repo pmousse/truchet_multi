@@ -166,6 +166,21 @@ const Truchet = (function () {
     return { kind: 'ellipse', c, rx, ry, a1, a2, cw };
   }
 
+  /* Sample an arc descriptor to a polyline (exact parametrization
+   * P(a) = c + (rx cos a, ry sin a)).  Sub-degree steps: visually
+   * indistinguishable from the true conic, and immune to canvas
+   * arc-direction semantics ambiguity. */
+  function sampleArc(s, stepRad = Math.PI / 360) { // 0.5 deg
+    if (s.kind === 'line') return [s.p1, s.p2];
+    const n = Math.max(6, Math.ceil(Math.abs(s.a2 - s.a1) / stepRad));
+    const pts = [];
+    for (let i = 0; i <= n; i++) {
+      const a = s.a1 + (s.a2 - s.a1) * i / n;
+      pts.push([s.c[0] + s.rx * Math.cos(a), s.c[1] + s.ry * Math.sin(a)]);
+    }
+    return pts;
+  }
+
   /* ---------- circuit -> closed polygon (ArcCircuitPolygon) ----------
    * Alternate tangent signs along the circuit; first node gets +internal.
    */
@@ -353,22 +368,12 @@ const Truchet = (function () {
     for (const { whiteFirst, segs } of tileDef) {
       ctx.fillStyle = whiteFirst ? colUnder : colTop;
       ctx.beginPath();
+      let started = false;
       for (const s of segs) {
-        if (s.kind === 'line') {
-          ctx.moveTo(s.p1[0], s.p1[1]);
-          ctx.lineTo(s.p2[0], s.p2[1]);
-        } else {
-          // exact elliptical arc: ctx.ellipse with rx, ry (rotation 0)
-          if (s.rx === 0 || s.ry === 0) {
-            ctx.moveTo(s.p1[0], s.p1[1]); ctx.lineTo(s.p2[0], s.p2[1]);
-          } else {
-            ctx.save();
-            ctx.translate(s.c[0], s.c[1]);
-            ctx.scale(s.rx, s.ry);
-            ctx.moveTo(Math.cos(s.a1), Math.sin(s.a1));
-            ctx.arc(0, 0, 1, s.a1, s.a2, s.cw);
-            ctx.restore();
-          }
+        const pts = sampleArc(s);
+        for (let i = started ? 1 : 0; i < pts.length; i++) {
+          if (!started) { ctx.moveTo(pts[i][0], pts[i][1]); started = true; }
+          else ctx.lineTo(pts[i][0], pts[i][1]);
         }
       }
       ctx.closePath();
@@ -422,7 +427,7 @@ const Truchet = (function () {
     PPS, NP, PT, SIDE, INWARD, coordinate,
     CONNECTION_SETS, TILE_NAMES, NAMED_TILES, connIdxByName, nameForConnIdx,
     mulberry32, seedFromString, randSeed,
-    traceCircuits, circuitSegments, circuitPolygon, getTile, tileDepth,
+    traceCircuits, circuitSegments, circuitPolygon, sampleArc, getTile, tileDepth,
     randomSubdivision, gridTiling, checkerboardTiling, surroundTiling,
     offsetSurroundTiling, fillTiling, dedupTiles,
     renderTiling, fitTransform, PALETTES, parseColor, lerpColor
