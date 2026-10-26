@@ -190,10 +190,16 @@ What replaced the old behaviour:
   cover scaling. Custom sizes are used verbatim; `reduceRatio()` (gcd, then
   continued-fraction convergents capped at `MAX_LATTICE_SIDE = 40`) picks the
   nearest lattice.
-- `n` is now a *density* control: it is snapped to the frame ratio, so 16:9
-  quantizes the short side to multiples of 9 (9, 18, 27...). The panel prints
-  `16 × 9 tiles · 3840 × 2160 px` in `#frameInfo` so the snap is visible, not
-  hidden. This is inherent: square tiles only tile rational-ratio rectangles.
+- `n` is now a **density multiplier slider** (`density ×1 … ×N`), not a raw tile
+  count. Square tiles only tile a p:q rectangle in multiples of (p, q), so the
+  lattice is (p·t) × (q·t) and the slider controls `t` directly — every step
+  changes the grid. The slider's max is recomputed per format from the caps
+  (`MAX_LATTICE_SIDE = 64`, `MAX_LATTICE_TILES = 5000`), so 1:1 goes to ×16,
+  16:9 to ×4 (64 × 36 tiles), 21:9 to ×3, 4:5 to ×12; the value is clamped on
+  format change instead of saturating silently. This replaced the old
+  "tiles along the short side" field, which looked dead because values between
+  multiples of q mapped to the same lattice (16:9: n = 2…13 all gave 16 × 9).
+  `#frameInfo` prints e.g. `48 × 27 tiles · 3840 × 2160 px · ×3`.
 - `rows`/`cols` and `offCols`/`offRows` inputs were removed (the frame ratio
   sets them). Hash keys changed: `F` (format), `rs`, `fw`, `fh`; the old
   `rows/cols/oc/or` keys are ignored by old links, which land on 1:1 — same

@@ -7,7 +7,7 @@
   /* ================= state ================= */
   const DEFAULTS = {
     tiling: 'chk',      // chk | grid | rand | sur | off
-    n: 6,               // tiles (or surround units) along the SHORT side of the frame
+    n: 4,               // density step: 1 = the frame's base lattice, ×2 doubles it
     splits: 12, maxd: 4,// random subdivision
     seed: 'k7x2m9',
     motifs: ['/'],      // selection set: motif names, 'mix', or several of both
@@ -35,7 +35,7 @@
     '5:4': [5, 4], '4:5': [4, 5],
     '2:1': [2, 1], '1:2': [1, 2]
   };
-  const MAX_LATTICE_SIDE = 40;   // cap when reducing an arbitrary custom ratio
+  const MAX_LATTICE_SIDE = 64;   // cap when reducing an arbitrary custom ratio
   const MAX_LATTICE_TILES = 5000;
 
   const HASH_KEYS = {
@@ -106,11 +106,18 @@
     }
     return FRAME_FORMATS[S.format] || [1, 1];
   }
+  function latticeMaxT() {              // highest density step within the caps
+    const [p, q] = frameRatio();
+    const bySide = Math.max(1, Math.floor(MAX_LATTICE_SIDE / Math.max(p, q)));
+    const byTiles = Math.max(1, Math.floor(Math.sqrt(MAX_LATTICE_TILES / (p * q))));
+    return Math.max(1, Math.min(16, bySide, byTiles));
+  }
   function lattice() {                 // tiling units: cols x rows covering the frame
     const [p, q] = frameRatio();
-    let t = Math.max(1, Math.round(S.n / Math.min(p, q)));
-    while (t > 1 && p * t * q * t > MAX_LATTICE_TILES) t--;
-    return { cols: p * t, rows: q * t };
+    /* Square tiles only tile a p:q rectangle in multiples of (p, q), so the
+     * control is that multiplier itself — every step of it changes the grid. */
+    const t = clamp(Math.round(S.n) || 1, 1, latticeMaxT());
+    return { cols: p * t, rows: q * t, t };
   }
 
   /* ================= tiling + pickTile ================= */
@@ -212,7 +219,8 @@
     const el = document.getElementById('frameInfo');
     if (!el) return;
     const unit = (S.tiling === 'sur' || S.tiling === 'off') ? 'units' : 'tiles';
-    el.textContent = `${L.cols} × ${L.rows} ${unit} · ${fw} × ${fh} px`;
+    const step = L.t > 1 ? ' · ×' + L.t : '';
+    el.textContent = `${L.cols} × ${L.rows} ${unit} · ${fw} × ${fh} px${step}`;
   }
   function renderMain() {
     const dpr = window.devicePixelRatio || 1;
@@ -282,6 +290,7 @@
   function pushToInputs() {
     $('selTiling').value = S.tiling;
     $('inN').value = S.n;
+    $('outN').textContent = '×' + lattice().t;
     $('selFormat').value = S.format;
     $('inFrameW').value = S.fw; $('inFrameH').value = S.fh;
     $('selRes').value = String(S.res);
@@ -297,6 +306,14 @@
     show('rowRes', S.format !== 'custom');
     show('rowRand', S.tiling === 'rand');
     show('rowCustomPal', S.pal === 'custom');
+    /* The density range depends on the frame: a 1:1 frame can carry far more
+     * tiles than a 21:9 one before the tile caps bite. Clamping here keeps the
+     * control honest instead of silently saturating. */
+    const maxT = latticeMaxT();
+    $('inN').max = String(maxT);
+    S.n = clamp(Math.round(S.n) || 1, 1, maxT);
+    $('inN').value = S.n;
+    $('outN').textContent = '×' + lattice().t;
   }
   function onChange() {
     writeHash(); refreshParamVisibility(); renderMain(); updateMotifSel();
