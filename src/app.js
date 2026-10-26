@@ -16,16 +16,7 @@
     pad: 2,             // margin percent
     format: '1:1',      // frame format key, or 'custom'
     res: 2048,          // long edge in px when a preset format is used
-    fw: 3840, fh: 2160, // explicit frame size when format === 'custom'
-    /* Mandala tab */
-    tab: 'gen',           // 'gen' | 'mandala'
-    rings: 5,             // concentric rings
-    sectors: 20,          // sectors per ring (same count in every ring, so
-                          // neighbouring cells share connection points)
-    sym: 'free',          // 'free' | 'mirror' | rotation order as a number
-    ringMode: 'auto',     // 'auto' geometric growth | 'even' uniform rings
-    minv: true,           // invert the motif on odd rings
-    hub: 'disc'           // 'disc' | 'ring' | 'none'
+    fw: 3840, fh: 2160  // explicit frame size when format === 'custom'
   };
   let S = Object.assign({}, DEFAULTS);
 
@@ -50,9 +41,7 @@
   const HASH_KEYS = {
     tiling: 't', n: 'n', splits: 'sp',
     maxd: 'md', seed: 'sd', motifs: 'm', pal: 'p', c1: 'c1', c2: 'c2',
-    bg: 'bg', pad: 'pd', format: 'F', res: 'rs', fw: 'fw', fh: 'fh',
-    tab: 'tab', rings: 'rg', sectors: 'sc', sym: 'sy',
-    ringMode: 'rw', minv: 'mi', hub: 'hb'
+    bg: 'bg', pad: 'pd', format: 'F', res: 'rs', fw: 'fw', fh: 'fh'
   };
   function writeHash() {
     const p = new URLSearchParams();
@@ -193,44 +182,6 @@
     return (depth) => [T.lerpColor(S.c1, S.c2, depth / maxD), S.bg];
   }
 
-  /* ================= mandala tab ================= */
-  const M = window.TruchetMandala;
-  function mandalaSym() {                  // 'free' | 'mirror' | integer order
-    const v = String(S.sym);
-    if (v === 'free' || v === 'mirror') return v;
-    const k = parseInt(v, 10);
-    return Number.isFinite(k) ? k : 'free';
-  }
-  function mandalaPx() {                   // mandalas are square frames
-    const res = clamp(Math.round(S.res), 64, 8192);
-    return [res, res];
-  }
-  function mandalaModel() {
-    return M.build({
-      rings: clamp(Math.round(S.rings), 1, 16),
-      sectors: clamp(Math.round(S.sectors), 3, 64),
-      sym: mandalaSym(), ringMode: S.ringMode,
-      seed: S.seed, pool: motifPool()
-    });
-  }
-  function buildMandalaPalette(model) {
-    if (S.pal !== 'custom') return T.PALETTES[S.pal] || T.PALETTES.bw;
-    const maxD = Math.max(1, model.rings - 1);   // the ramp runs ring 0 -> outer ring
-    return (ring) => [T.lerpColor(S.c1, S.c2, ring / maxD), S.bg];
-  }
-  function drawMandala(c, w, h) {
-    const cx = c.getContext('2d');
-    const model = mandalaModel();
-    const pal = buildMandalaPalette(model);
-    cx.setTransform(1, 0, 0, 1, 0, 0);
-    cx.fillStyle = (S.pal === 'custom') ? S.bg : pal[1];
-    cx.fillRect(0, 0, w, h);
-    M.render(cx, model, {
-      w, h, palette: pal, invert: S.minv, hub: S.hub, pad: S.pad / 100
-    });
-    return model;
-  }
-
   /* ================= main view ================= */
   const canvas = document.getElementById('mainCanvas');
   const ctx = canvas.getContext('2d');
@@ -269,13 +220,6 @@
   function updateFrameInfo() {
     const el = document.getElementById('frameInfo');
     if (!el) return;
-    if (S.tab === 'mandala') {
-      const [w, h] = mandalaPx();
-      const sym = mandalaSym();
-      const symNote = sym === 'free' ? '' : (sym === 'mirror' ? ' · mirror' : ` · rotate ×${sym}`);
-      el.textContent = `${S.rings} rings · ${S.sectors} sectors${symNote} · ${w} × ${h} px`;
-      return;
-    }
     const L = lattice(), [fw, fh] = framePx();
     const unit = (S.tiling === 'sur' || S.tiling === 'off') ? 'units' : 'tiles';
     const step = L.t > 1 ? ' · ×' + L.t : '';
@@ -283,8 +227,7 @@
   }
   function renderMain() {
     const dpr = window.devicePixelRatio || 1;
-    const square = S.tab === 'mandala';
-    const [fw, fh] = square ? mandalaPx() : framePx();
+    const [fw, fh] = framePx();
     const ar = fw / fh;
     /* Preview = the export frame, scaled to fit the visible stage, so what you
      * see is what the PNG will be (same lattice, same crop-free fill). */
@@ -303,8 +246,7 @@
       lastDpr = dpr;
       paintPreviews();
     }
-    if (square) drawMandala(canvas, w, h);
-    else drawScene(canvas, buildTiling(), w, h);
+    drawScene(canvas, buildTiling(), w, h);
     updateFrameInfo();
   }
 
@@ -315,31 +257,6 @@
   }
   function motifPart(isMix, pool) {
     return isMix ? 'mix' : pool.map(sanitizeMotif).join('-');
-  }
-  function mandalaExportName(w, h) {
-    const pool = motifPool();
-    const isMix = pool.length === T.MOTIF_NAMES.length &&
-      pool.every((m, i) => m === T.MOTIF_NAMES[i]);
-    const sym = mandalaSym();
-    const symPart = sym === 'free' ? 'free' : (sym === 'mirror' ? 'mirror' : 'rot' + sym);
-    return 'truchet_mandala_r' + S.rings + 's' + S.sectors + '_' + S.seed +
-      '_' + symPart + '_m' + motifPart(isMix, pool) +
-      '_p' + (S.pal === 'custom' ? 'ramp' : S.pal) + '_' + w + 'x' + h + '.png';
-  }
-  function exportMandalaPNG() {
-    const [w, h] = mandalaPx();
-    const off = document.createElement('canvas');
-    off.width = w; off.height = h;
-    drawMandala(off, w, h);
-    const name = mandalaExportName(w, h);
-    off.toBlob((blob) => {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = name;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    }, 'image/png');
-    document.getElementById('fileName').textContent = name;
   }
   function exportName(w, h) {
     const L = lattice();
@@ -353,7 +270,6 @@
       '_p' + pal + '_' + w + 'x' + h + '.png';
   }
   function exportPNG() {
-    if (S.tab === 'mandala') { exportMandalaPNG(); return; }
     const [w, h] = framePx();
     const off = document.createElement('canvas');
     off.width = w; off.height = h;
@@ -375,9 +291,7 @@
     tiling: 'selTiling', n: 'inN', format: 'selFormat',
     fw: 'inFrameW', fh: 'inFrameH', res: 'selRes',
     splits: 'inSplits', maxd: 'inMaxd', seed: 'inSeed', pal: 'selPal',
-    c1: 'inC1', c2: 'inC2', bg: 'inBg', pad: 'inPad',
-    rings: 'inRings', sectors: 'selSectors', sym: 'selSym',
-    ringMode: 'selRingMode', hub: 'selHub'
+    c1: 'inC1', c2: 'inC2', bg: 'inBg', pad: 'inPad'
   };
   function pushToInputs() {
     $('selTiling').value = S.tiling;
@@ -390,20 +304,13 @@
     $('inSeed').value = S.seed; $('selPal').value = S.pal;
     $('inC1').value = S.c1; $('inC2').value = S.c2; $('inBg').value = S.bg;
     $('inPad').value = S.pad; $('outPad').textContent = S.pad + '%';
-    $('inRings').value = S.rings; $('outRings').textContent = S.rings;
-    $('selSectors').value = String(S.sectors);
-    $('selSym').value = String(S.sym);
-    $('selRingMode').value = S.ringMode;
-    $('inMInv').checked = !!S.minv;
-    $('selHub').value = S.hub;
   }
   function refreshParamVisibility() {
     const show = (id, on) => $(id).style.display = on ? '' : 'none';
     show('rowN', true);
     show('rowFrameSize', S.format === 'custom');
-    show('rowRes', S.tab === 'mandala' ? true : S.format !== 'custom');
-    $('lblRes').textContent = S.tab === 'mandala' ? 'side' : 'long edge';
-    $('outRings').textContent = S.rings;
+    show('rowRes', S.format !== 'custom');
+    $('lblRes').textContent = 'long edge';
     show('rowRand', S.tiling === 'rand');
     show('rowCustomPal', S.pal === 'custom');
     /* The density range depends on the frame: a 1:1 frame can carry far more
@@ -415,10 +322,6 @@
     $('inN').value = S.n;
     $('outN').textContent = '×' + lattice().t;
   }
-  $('inMInv').addEventListener('input', () => {
-    S.minv = !!$('inMInv').checked;
-    onChange();
-  });
   function onChange() {
     writeHash(); refreshParamVisibility(); renderMain(); updateMotifSel();
   }
@@ -451,23 +354,6 @@
 
   /* export controls */
   $('btnExport').addEventListener('click', () => exportPNG());
-
-  /* tabs: Generator and Mandala share the seed, motif pool, palette and export */
-  function syncTabs() {
-    document.querySelectorAll('#tabs button[data-tab]').forEach((b) => {
-      b.classList.toggle('active', b.dataset.tab === S.tab);
-    });
-    document.body.classList.toggle('tab-mandala', S.tab === 'mandala');
-  }
-  document.querySelectorAll('#tabs button[data-tab]').forEach((b) => {
-    b.addEventListener('click', () => {
-      if (S.tab === b.dataset.tab) return;
-      S.tab = b.dataset.tab;
-      syncTabs();
-      writeHash();
-      renderMain();
-    });
-  });
 
   /* motif picker: the 15 tiles from Carlson's motifs figure, plus a mix cell */
   const grid = $('motifGrid');
@@ -554,9 +440,6 @@
   S.motifs = (S.motifs || []).filter(
     (m) => m === 'mix' || T.MOTIF_NAMES.includes(m));
   if (!S.motifs.length) S.motifs = ['/'];
-  if (S.tab !== 'mandala') S.tab = 'gen';
-  if (!M) S.tab = 'gen';
-  syncTabs();
   pushToInputs();
   buildMotifGrid();
   refreshParamVisibility();

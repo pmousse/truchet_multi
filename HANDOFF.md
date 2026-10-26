@@ -5,17 +5,17 @@ Project dir: `D:/_truchet`  (git repo)
 ## What this project is
 Single-file HTML app faithfully reimplementing Christopher Carlson's
 Multi-Scale Truchet Patterns (christophercarlson.com). Vanilla JS + canvas.
-Plan: 5 tabs (Generator, Fill, Photo, Composer, Mandala) on one engine.
+Plan: 5 tabs (Generator, Fill, Photo, Composer, Mandala) on one engine — the
+Mandala one was built and then removed at the user's request, see below.
 
-## Status (Generator solid; Mandala tab added and QA-verified)
+## Status (Generator solid; Mandala tried and removed)
 - ENGINE (`src/engine.js`) = literal port of Carlson's Wolfram package
   (`mstp/MultiScaleTruchetPatterns.wl`). Validated against Python oracle
   `dev/port.py` via `dev/gold.json` — `node dev/check_gold.js` → 24/24 PASS.
-- UI: `index.html` (dev page, loads `src/engine.js` + `src/mandala.js` +
-  `src/app.js` directly) + `src/app.js`. Tabs live: **Generator**, **Mandala**;
-  Fill / Photo / Composer are placeholders. `node build.js` →
-  `dist/truchet.html` (single file, ~63 KB). Always open `index.html` with a
-  cache-buster (`?v=<commit>`) when verifying.
+- UI: `index.html` (dev page, loads `src/engine.js` + `src/app.js` directly) +
+  `src/app.js`. Live tab: **Generator** (Fill / Photo / Composer are still
+  placeholders). `node build.js` → `dist/truchet.html` (single file, ~46 KB).
+  Always open `index.html` with a cache-buster (`?v=<commit>`) when verifying.
 - Motif picker = **the 15 tiles Carlson shows in motifs.png**, in his grid
   order, 4 columns + a `mix` cell (see "Which 15 tiles, measured" below).
   Verified live: `python dev/_appqa.py <app screenshot> 0 0 600 2000` → 15/15
@@ -219,98 +219,45 @@ What replaced the old behaviour:
   and changing the pool re-rolls it. State is `S.motifs` (array), hashed as
   `m=a,b`; old single-motif links (`m=/`, `m=mix`) still load.
 
-## Mandala tab (5th tab, this session)
+## Mandala tab: built, verified, then REMOVED at the user's request
 
-Radial Truchet: polar space instead of a square lattice. Concentric rings x
-angular sectors, each polar cell mapped to a unit square and filled with the
-*same* engine connection sets / arc geometry the Generator uses, so circuit
-continuity across seams works exactly like the square version.
+A fifth tab (radial Truchet: polar cells using the same engine connection sets
+and arc geometry) was implemented in `src/mandala.js`, QA'd to a Python oracle
+match, and then deleted - the user looked at it and said it had "too many weird
+things happening", so it is out of the app. **Do not re-add it unless the user
+asks.** Everything is preserved in git commit `a15cf7e` (source, dev harnesses
+`dev/_mandqa.js`, `dev/_mandqa.py`, `dev/_mandgeo.js`, `dev/mandtest.html`).
 
-- `src/mandala.js` (loaded before `src/app.js`, exported as
-  `window.TruchetMandala`): `build({rings, sectors, sym, ringMode, seed, pool})`
-  -> `{cells, radii, dth, rings, maxDr, rInner, rOuter}`, plus
-  `render(ctx, model, {w, h, palette, invert, hub, pad})` and `mirrorSetX()`.
-- **The warp is conformal**: rings grow by `exp(dTheta)` with `dTheta = 2pi/sectors`,
-  and a cell maps `(u,v) -> r = r0 * (r1/r0)^v`, `th = th0 + u*dTheta`. Because
-  `ln(r1/r0) == dTheta`, local radial scale equals local angular scale: angles are
-  preserved, so tangent-continuous arcs stay tangent after warping. (Growing by
-  `1 + dTheta` instead - the first attempt - sheared the cells and opened visible
-  cracks.)
-- Cells are *not* clipped to their quads. A circuit's wings (which reach 1/3 of a
-  cell into the neighbour) must paint over the seam, and clipping them left nicks
-  at arm tips.
+What was learned, in case a polar variant is ever wanted again:
+- Ring radii must grow by `exp(dTheta)` (`dTheta = 2pi/sectors`) and a cell must
+  warp as `r = r0*(r1/r0)^v`, `th = th0 + u*dTheta`. That makes the polar map
+  conformal (radial scale == angular scale), which is what keeps tangent arcs
+  tangent. Growing by `1 + dTheta` instead shears the cells and opens cracks.
 - Carlson's circuit polygons contain near-osculating arc pairs (band edges that
-  touch with matched curvature, zero-area overlap in the square). The polar warp
-  opens those contacts into hairline lenses. Fix: after `ctx.fill()` every circuit
-  is also `ctx.stroke()`d in its own colour with `lineWidth = max(0.6,
-  s * rMid * dTheta * 0.045)`, which fattens bands just enough to close them.
-- Symmetry options: `free` (independent per cell), `mirror` (bilateral - draw
-  `sectors/2` cells, mirror the rest through `mirrorSetX`, which reflects the
-  connection set in x and is involutive for all 24 sets), `rotate x k` for
-  k = 2..8 (draw a `sectors/k` wedge, repeat). Seed salt is
-  `seed + '\u0001mandala:' + sectors + ':' + rings`.
-- Ring width: `auto` = geometric `exp(dTheta)` growth (cells read near-square);
-  `even` = uniform thickness 1.0 per ring. Fit radius = `rOuter + maxDr/3` so the
-  wings stay inside the canvas. `invert odd rings` swaps the two palette colours
-  on odd rings. Center hub: filled disc (`rInner*s*0.55`), outline ring
-  (`rInner*s`, `lineWidth = max(1, maxDr*s*0.12)`) or open.
-- Mandala frame is always square (`mandalaPx()`); exports as
-  `truchet_mandala_r<rings>s<sectors>_<seed>_<sym>_m<motif>_p<palette>_<w>x<h>.png`.
-- Hash keys: `rg` rings (1-12), `sc` sectors (6/8/12/16/20/24/32/48), `sy` sym,
-  `rw` ringMode, `mi` invert, `hb` hub; the Generator's motif pool, palette and
-  resolution controls are shared.
+  touch with matched curvature, zero-area overlap in the square). The warp gives
+  them area, i.e. hairline lenses that read as cracks; closing them needed
+  stroking every circuit in its own colour (`max(0.6, s*rMid*dTheta*0.045)`).
+- Clipping each cell to its warped quad is wrong: circuit wings reach 1/3 of a
+  cell into the neighbour and must paint across the seam, otherwise arm tips get
+  nicks.
+- `dev/port.py` was given a `step_deg` arc-tessellation argument for the polar
+  oracle; reverted, so `port.py` stays a literal mirror of Carlson's package.
 
-### `+` in a URL hash was silently eating the `+` motif (fixed)
+### `+` in a URL hash was silently eating the `+` motif (kept: this is a Generator fix)
 `new URLSearchParams(location.hash)` decodes a literal `+` as a space, so a typed
-link like `#m=+` selected motif `" "` -> blank canvas, and a pool like
-`tn,fnw,+` lost its `+`. `writeHash()` percent-encodes correctly (`m=%2B`), so
-only typed/old links and hand-built QA queries were affected. Both `readHash()`
-in `src/app.js` and `q()` in `dev/mandtest.html` now pre-protect with
-`.replace(/\+/g, '%2B')`; the Python harnesses percent-encode query values.
-Verified: typed `m=+` and encoded `m=%2B` screenshots are byte-identical.
+link like `#m=+` selected motif `" "` -> blank canvas, and a pool like `tn,fnw,+`
+lost its `+`. `writeHash()` percent-encodes correctly (`m=%2B`), so only
+typed/old links and hand-built QA queries were affected. `readHash()` in
+`src/app.js` now pre-protects with `.replace(/\+/g, '%2B')`. Verified: typed
+`m=+` and encoded `m=%2B` screenshots are byte-identical.
 
-## Mandala QA toolkit
-
-```
-node dev/_mandqa.js                 # structural model checks (mirror involution,
-                                    # seam sharing, exp(dTheta) radii, determinism)
-python dev/_mandqa.py               # pixel oracle matrix, PASS/FAIL gate
-python dev/_mandqa.py --img 5 12 mirror even tn,fnw,+ k7x2m9   # dump PNGs
-MANDQA_EDGE_R=2 python dev/_mandqa.py ...                      # tighten for debugging
-node dev/_mandgeo.js                # warp distortion bounds in parameter space
-```
-
-`dev/_mandqa.py` is the mandala oracle: it re-implements `build()`, the warp and
-the painter's order in Python on top of `dev/port.py`, rasterises it scanline by
-scanline (including the stroke dilation mandala.js applies - a span grows by
-`(sw/2) * sqrt(1 + (dx/dy)^2)` at a boundary crossing, capped, because real
-strokes use round joins), then compares against a headless-Chrome screenshot of
-`dev/mandtest.html` (a bare canvas page whose hash mirrors the app's params, at
-an exact pixel size). Mismatches are classified `edge` (a matching pixel exists
-within `EDGE_R`, i.e. an anti-aliased boundary) vs `deep` (a real region of
-disagreement), and `deep` run-length stats are printed so geometric drift shows
-up as wide runs. Current status: 38 deep px total over 6 configs (0.0025%), all
-1-4 px boundary residuals; gate = 60 deep px/case and runs <= 8 px.
-`--img` writes `dev/browse/mand_oracle.png`, `mand_browser.png`, `mand_diff.png`
-(red = oracle brighter, blue = oracle darker) and `mand_deep.png` (deep mask - a
-healthy run shows only thin crescents along band edges).
-
-The older `dev/_manddiff.py` was folded into `_mandqa.py` and deleted.
-`dev/port.py` gained a `step_deg` argument to `arc_points` /
-`arc_circuit_polygon` (arc tessellation density, default unchanged at 5 deg) so
-the mandala oracle can tessellate finely at polar resolution without changing
-Generator results.
 
 ## Next actions
 1. Generator rendering: nothing open. If a tile is ever reported broken, ask
    for the URL hash (copy-link encodes every parameter) or a saved screenshot
    and reproduce it headlessly — do not guess.
-2. Mandala: rendering is verified (see Mandala QA toolkit). Open ideas:
-   per-ring motif pools (e.g. fnw in odd rings, tn in even), mandala palette
-   ramp already lerps c1→c2 across rings in custom mode, mandala JPEG/WebP
-   export, and optional spiral offset (shift each ring by half a sector).
-   If a mandala config ever looks wrong, run `python dev/_mandqa.py --img`
-   with that exact config and read `mand_deep.png`.
+2. Mandala: REMOVED at the user's request (see the "built, verified, then
+   REMOVED" section). Do not re-add it unless the user asks for it again.
 3. Phase 2: Fill + Photo tabs (README plan) on the same engine.
 4. Possible framing follow-ups: per-format saved presets, JPEG/WebP export, and
    multi-monitor sizes (e.g. 5120 x 1440) via the custom W x H row.

@@ -60,7 +60,7 @@ def arc_points_sampled(c, rx, ry, a1, a2, step_deg=5.0):
     return pts
 
 
-def arc_points(p1, t1, p2, t2, step_deg=5.0):
+def arc_points(p1, t1, p2, t2):
     """ArcPoints[{p1,t1},{p2,t2}] literal port. Returns list of points."""
     va = vector_angle(t1, t2)
     if abs(va) < EPS:
@@ -84,10 +84,10 @@ def arc_points(p1, t1, p2, t2, step_deg=5.0):
         a2 -= 2 * math.pi
     if (not cw) and a2 < a1:
         a1 -= 2 * math.pi
-    return arc_points_sampled(c, rx, ry, a1, a2, step_deg=step_deg)
+    return arc_points_sampled(c, rx, ry, a1, a2)
 
 
-def arc_circuit_polygon(pps, circuit, step_deg=5.0):
+def arc_circuit_polygon(pps, circuit):
     """ArcCircuitPolygon literal: alternating tangent sign, closed loop."""
     pts_desc = []
     switch = True
@@ -101,7 +101,7 @@ def arc_circuit_polygon(pps, circuit, step_deg=5.0):
     out = []
     for i in range(len(pts_desc)):
         (p1, t1), (p2, t2) = closed[i], closed[i + 1]
-        seg = arc_points(p1, t1, p2, t2, step_deg=step_deg)
+        seg = arc_points(p1, t1, p2, t2)
         # Join@@ : concatenate; avoid duplicating shared endpoints
         if out and seg:
             out.extend(seg[1:])
