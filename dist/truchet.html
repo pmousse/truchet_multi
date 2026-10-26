@@ -744,6 +744,7 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
   /* ================= main view ================= */
   const canvas = document.getElementById('mainCanvas');
   const ctx = canvas.getContext('2d');
+  let lastDpr = 0;
   function drawScene(c, tiles, w, h, cropAspect) {
     const cx = c.getContext('2d');
     cx.setTransform(1, 0, 0, 1, 0, 0);
@@ -792,6 +793,10 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     const w = canvas.clientWidth * dpr, h = canvas.clientHeight * dpr;
     if (canvas.width !== w || canvas.height !== h) {
       canvas.width = w; canvas.height = h;
+    }
+    if (dpr !== lastDpr) {   // browser zoom changes devicePixelRatio
+      lastDpr = dpr;
+      paintPreviews();
     }
     drawScene(canvas, buildTiling(), w, h, null);
   }
@@ -889,31 +894,55 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
 
   /* motif picker: 24 previews + mix cell */
   const grid = $('motifGrid');
+  let previewCanvases = [];
   function buildMotifGrid() {
     grid.innerHTML = '';
     const mix = document.createElement('canvas');
     mix.className = 'mix'; mix.title = 'mix (random per tile)';
     mix.dataset.motif = 'mix';
     grid.appendChild(mix);
+    previewCanvases = [mix];
     for (const name of T.TILE_NAMES) {
       const c = document.createElement('canvas');
-      c.width = 88; c.height = 88;
       c.title = name; c.dataset.motif = name;
-      const cx = c.getContext('2d');
-      cx.fillStyle = '#fff'; cx.fillRect(0, 0, 88, 88);
-      T.fitTransform(cx, [{ x: 0, y: 0, s: 1 }], 88, 88, 0.04);
-      T.renderTiling(cx, [{ x: 0, y: 0, s: 1 }], {
-        pickTile: () => T.connIdxByName(name),
-        palette: T.PALETTES.bw
-      });
       grid.appendChild(c);
+      previewCanvases.push(c);
     }
-    grid.querySelectorAll('canvas').forEach((c) => {
+    paintPreviews();
+    previewCanvases.forEach((c) => {
       c.addEventListener('click', () => {
         S.motif = c.dataset.motif;
         onChange();
       });
     });
+  }
+  /* Previews are drawn at the device pixel ratio so the shapes stay crisp
+   * (a fixed 88px backing store gets resampled by the browser and the
+   * thin arc junctions then look ragged / "broken"). */
+  function paintPreviews() {
+    const dpr = window.devicePixelRatio || 1;
+    for (const c of previewCanvases) {
+      const css = c.clientWidth || 88;
+      const px = Math.max(24, Math.round(css * dpr));
+      if (c.width !== px || c.height !== px) { c.width = px; c.height = px; }
+      const cx = c.getContext('2d');
+      const name = c.dataset.motif;
+      cx.setTransform(1, 0, 0, 1, 0, 0);
+      if (name === 'mix') {
+        cx.fillStyle = '#23242c'; cx.fillRect(0, 0, px, px);
+        cx.fillStyle = '#8b8fa3';
+        cx.font = Math.round(px * 0.16) + 'px ui-monospace, Consolas, monospace';
+        cx.textAlign = 'center'; cx.textBaseline = 'middle';
+        cx.fillText('mix', px / 2, px / 2);
+        continue;
+      }
+      cx.fillStyle = '#fff'; cx.fillRect(0, 0, px, px);
+      T.fitTransform(cx, [{ x: 0, y: 0, s: 1 }], px, px, 0.04);
+      T.renderTiling(cx, [{ x: 0, y: 0, s: 1 }], {
+        pickTile: () => T.connIdxByName(name),
+        palette: T.PALETTES.bw
+      });
+    }
   }
   function updateMotifSel() {
     grid.querySelectorAll('canvas').forEach((c) => {
@@ -928,7 +957,12 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
   refreshParamVisibility();
   renderMain();
   updateMotifSel();
-  window.addEventListener('resize', renderMain);
+  let rAF = 0;
+  window.addEventListener('resize', () => {
+    renderMain();
+    cancelAnimationFrame(rAF);
+    rAF = requestAnimationFrame(paintPreviews);
+  });
 })();
 
 </script>
