@@ -440,3 +440,4 @@ const Truchet = (function () {
   };
 })();
 if (typeof module !== 'undefined') module.exports = Truchet;
+if (typeof window !== 'undefined') window.Truchet = Truchet;
