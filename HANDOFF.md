@@ -323,10 +323,17 @@ Invariants to keep if this is touched again:
   `traceTilePolygons` keeps its original sampling path as the fallback; the
   Node gold tests exercise the fallback, the browser exercises the cache.
 
-Known accounting wart (next fix): the lattice is cells, the engine emits more
-tiles than cells - checkerboard 64x36 cells = 5760 tiles, surround = 14125.
-`MAX_LATTICE_TILES = 5000` therefore caps cells, not tiles, and the panel says
-"64 x 36 tiles" when 5760 are actually drawn.
+Accounting, fixed in the next commit: the lattice is measured in CELLS but the
+engine emits more tiles than cells - measured expansion factors are ~2.5 tiles
+per checkerboard cell and ~6 per surround unit, so 64x36 cells = 5760 tiles and
+a surround lattice at the same size = 14125. `MAX_LATTICE_TILES` now counts
+tiles actually drawn (8000), `latticeMaxT()` estimates the expansion factor from
+the base lattice and then trims by counting the real tiling, and a separate
+`MAX_DENSITY_STEP = 32` ceiling keeps the slider's top end sane. Consequence the
+user will notice: surround/offset on 16:9 clamp from x4 down to x2 (3607 tiles)
+because x4 would emit 14125. The panel line now reports both quantities -
+"64 x 36 cells x4 - 5760 tiles - 3840 x 2160 px" - and 'units' rather than
+'tiles' for the surround lattings.
 
 ## User preferences
 Faithful port, not stylized. Single-file HTML, vanilla JS, no deps. Dark

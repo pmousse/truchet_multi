@@ -36,7 +36,18 @@
     '2:1': [2, 1], '1:2': [1, 2]
   };
   const MAX_LATTICE_SIDE = 64;   // cap when reducing an arbitrary custom ratio
-  const MAX_LATTICE_TILES = 5000;
+  /* Tiles actually DRAWN, not lattice cells: a checkerboard cell yields ~2.5
+   * tiles on average and a surround unit ~6, so counting cells understates the
+   * real cost by 2.5x-6x. Measured on this machine with the cached Path2D
+   * shapes: 5760 tiles = ~0.67 s per 4K export paint and ~0.66 s per 1280x720
+   * preview redraw; 14125 tiles = ~1.7 s and ~1.5 s. 8000 keeps the dense
+   * checkerboard case available while capping the surround tilings. */
+  const MAX_LATTICE_TILES = 8000;
+  /* Absolute ceiling on the density multiplier, independent of frame: it exists
+   * so the slider has a sane top end (at x32 a 1:1 frame is 32x32 cells and a
+   * tile is still ~64 px at 2048 px, i.e. a motif rather than noise). The tile
+   * cap above is what actually binds for wide frames. */
+  const MAX_DENSITY_STEP = 32;
 
   const HASH_KEYS = {
     tiling: 't', n: 'n', splits: 'sp',
@@ -109,23 +120,7 @@
     }
     return FRAME_FORMATS[S.format] || [1, 1];
   }
-  function latticeMaxT() {              // highest density step within the caps
-    const [p, q] = frameRatio();
-    const bySide = Math.max(1, Math.floor(MAX_LATTICE_SIDE / Math.max(p, q)));
-    const byTiles = Math.max(1, Math.floor(Math.sqrt(MAX_LATTICE_TILES / (p * q))));
-    return Math.max(1, Math.min(16, bySide, byTiles));
-  }
-  function lattice() {                 // tiling units: cols x rows covering the frame
-    const [p, q] = frameRatio();
-    /* Square tiles only tile a p:q rectangle in multiples of (p, q), so the
-     * control is that multiplier itself — every step of it changes the grid. */
-    const t = clamp(Math.round(S.n) || 1, 1, latticeMaxT());
-    return { cols: p * t, rows: q * t, t };
-  }
-
-  /* ================= tiling + pickTile ================= */
-  function buildTiling() {
-    const L = lattice();
+  function tilingFor(L) {         // tiles a given lattice actually emits
     switch (S.tiling) {
       case 'chk': return T.checkerboardTiling(L.cols, L.rows);
       case 'grid': return T.gridTiling(L.rows, L.cols);
@@ -142,6 +137,43 @@
     }
     return T.checkerboardTiling(4, 4);
   }
+  function latticeOf(p, q, t) { return { cols: p * t, rows: q * t, t }; }
+  let maxTCache = { key: '', val: 1 };
+  function latticeMaxT() {              // highest density step within the caps
+    const [p, q] = frameRatio();
+    const randPart = (S.tiling === 'rand') ? ':' + S.splits + ':' + S.maxd : '';
+    const key = S.tiling + ':' + p + ':' + q + randPart;
+    if (maxTCache.key === key) return maxTCache.val;
+    /* The side cap is pure geometry. The tile cap needs this tiling's own
+     * expansion factor - how many tiles one cell produces - measured on the
+     * base lattice instead of assumed, then verified against the real tiling
+     * because the expansion is not exactly constant. */
+    const bySide = Math.max(1, Math.floor(MAX_LATTICE_SIDE / Math.max(p, q)));
+    const ratio = Math.max(1, tilingFor(latticeOf(p, q, 1)).length / (p * q));
+    let t = Math.max(1, Math.min(MAX_DENSITY_STEP, bySide,
+      Math.floor(Math.sqrt(MAX_LATTICE_TILES / (ratio * p * q)))));
+    let count = tilingFor(latticeOf(p, q, t)).length;
+    if (count > MAX_LATTICE_TILES) {
+      t = Math.max(1, Math.floor(t * Math.sqrt(MAX_LATTICE_TILES / count)));
+      while (t > 1) {
+        count = tilingFor(latticeOf(p, q, t)).length;
+        if (count <= MAX_LATTICE_TILES) break;
+        t--;
+      }
+    }
+    maxTCache = { key, val: t };
+    return t;
+  }
+  function lattice() {                 // tiling units: cols x rows covering the frame
+    const [p, q] = frameRatio();
+    /* Square tiles only tile a p:q rectangle in multiples of (p, q), so the
+     * control is that multiplier itself — every step of it changes the grid. */
+    const t = clamp(Math.round(S.n) || 1, 1, latticeMaxT());
+    return { cols: p * t, rows: q * t, t };
+  }
+
+  /* ================= tiling + pickTile ================= */
+  function buildTiling() { return tilingFor(lattice()); }
   /* The motif cells form a pool: one cell = that motif everywhere, several
    * cells (ctrl+click) = one of them chosen at random per tile, exactly like
    * 'mix' but restricted to the chosen subset. 'mix' means all 15. */
@@ -217,13 +249,14 @@
       bounds: [wx0, wy0, wx0 + winW, wy0 + winH]
     });
   }
-  function updateFrameInfo() {
+  function updateFrameInfo(tiles) {
     const el = document.getElementById('frameInfo');
     if (!el) return;
     const L = lattice(), [fw, fh] = framePx();
-    const unit = (S.tiling === 'sur' || S.tiling === 'off') ? 'units' : 'tiles';
+    const unit = (S.tiling === 'sur' || S.tiling === 'off') ? 'units' : 'cells';
     const step = L.t > 1 ? ' · ×' + L.t : '';
-    el.textContent = `${L.cols} × ${L.rows} ${unit} · ${fw} × ${fh} px${step}`;
+    const drawn = (tiles && tiles.length) || buildTiling().length;
+    el.textContent = `${L.cols} × ${L.rows} ${unit}${step} · ${drawn} tiles · ${fw} × ${fh} px`;
   }
   function renderMain() {
     const dpr = window.devicePixelRatio || 1;
@@ -246,8 +279,9 @@
       lastDpr = dpr;
       paintPreviews();
     }
-    drawScene(canvas, buildTiling(), w, h);
-    updateFrameInfo();
+    const tiles = buildTiling();
+    drawScene(canvas, tiles, w, h);
+    updateFrameInfo(tiles);
   }
 
   /* ================= export ================= */
