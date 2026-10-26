@@ -365,21 +365,26 @@ const Truchet = (function () {
    * palette: [color0(even-min circuits, drawn on top), color1(odd-min, under)]
    */
   function traceTilePolygons(ctx, tileDef, colTop, colUnder) {
-    for (const { whiteFirst, segs } of tileDef) {
-      ctx.fillStyle = whiteFirst ? colUnder : colTop;
-      ctx.beginPath();
-      let started = false;
-      for (const s of segs) {
-        const pts = sampleArc(s);
-        for (let i = started ? 1 : 0; i < pts.length; i++) {
-          if (!started) { ctx.moveTo(pts[i][0], pts[i][1]); started = true; }
-          else ctx.lineTo(pts[i][0], pts[i][1]);
+    // Carlson's draw order: ALL white circuits first (under), then ALL
+    // black circuits (on top) -- see SquareArcTile in the WL source.
+    for (const pass of [true, false]) {
+      for (const { whiteFirst, segs } of tileDef) {
+        if (whiteFirst !== pass) continue;
+        ctx.fillStyle = pass ? colUnder : colTop;
+        ctx.beginPath();
+        let started = false;
+        for (const s of segs) {
+          const pts = sampleArc(s);
+          for (let i = started ? 1 : 0; i < pts.length; i++) {
+            if (!started) { ctx.moveTo(pts[i][0], pts[i][1]); started = true; }
+            else ctx.lineTo(pts[i][0], pts[i][1]);
+          }
         }
+        ctx.closePath();
+        // even-odd fill matches the gold rasterizer (arcs can wrap 270 deg
+        // around tile corners and self-overlap)
+        ctx.fill('evenodd');
       }
-      ctx.closePath();
-      // even-odd fill matches the gold rasterizer (arcs can wrap 270 deg
-      // around tile corners and self-overlap)
-      ctx.fill('evenodd');
     }
   }
 

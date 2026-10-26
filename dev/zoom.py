@@ -24,7 +24,8 @@ def read_png(path):
         if typ == b'IHDR':
             w, h, bitdepth, color_type, comp, filt, interlace = struct.unpack('>IIBBBBB', chunk)
             assert interlace == 0, 'interlaced not supported'
-            assert bitdepth == 8, f'bitdepth {bitdepth} not supported'
+            assert bitdepth in (8, 16), f'bitdepth {bitdepth} not supported'
+            bd = bitdepth
         elif typ == b'PLTE':
             palette = chunk
         elif typ == b'IDAT':
@@ -33,6 +34,7 @@ def read_png(path):
             break
     raw = zlib.decompress(idat)
     channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[color_type]
+    channels = channels * (2 if bitdepth == 16 else 1)  # 16-bit: 2 bytes/chan
     bpp = channels  # bytes per pixel (8-bit)
     stride = w * bpp
     out = bytearray(w * h * bpp)
@@ -60,6 +62,21 @@ def read_png(path):
             else: raise ValueError('filter')
             out[y * stride + i] = v
     # normalize to RGB
+    if bitdepth == 16:
+        # resample to 8-bit by taking the high byte of each channel
+        rgb16 = bytearray(w * h * 3)
+        for y in range(h):
+            for x in range(w):
+                i = (y * w + x)
+                if color_type == 2:
+                    o = i * 6; r = out[o]; g = out[o + 2]; b = out[o + 4]
+                elif color_type == 6:
+                    o = i * 8; r = out[o]; g = out[o + 2]; b = out[o + 4]
+                else:  # gray16
+                    o = i * 2; r = g = b = out[o]
+                j = i * 3
+                rgb16[j] = r; rgb16[j + 1] = g; rgb16[j + 2] = b
+        return w, h, rgb16
     rgb = bytearray(w * h * 3)
     for y in range(h):
         for x in range(w):
