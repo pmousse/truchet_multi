@@ -93,6 +93,20 @@ const Truchet = (function () {
   const TILE_NAMES = Object.keys(NAMED_TILES).sort(
     (a, b) => NAMED_TILES[a] - NAMED_TILES[b]);
 
+  /* The 15 tiles Carlson actually shows in his motifs figure, in his grid
+   * order (verified against motifs.png: every cell matches one of these at
+   * IoU 0.80-0.90 with a single fitted square size of 37.5px on an 87x90
+   * pitch).  The other nine names in SquareTileNameMapping -- the four
+   * rotation variants of the Y tile (yn ye ys yw), the four rotation variants
+   * of the anchor tile (anw ane ase asw) and 'p' -- are real tiles in his
+   * code but are not part of that showcase, so the UI does not offer them.
+   */
+  const MOTIF_NAMES = [
+    '\\', '/', '-', '|', '+.', 'x.', '+',
+    'fnw', 'fne', 'fse', 'fsw',
+    'tn', 'te', 'ts', 'tw'
+  ];
+
   /* ---------- circuits (Carlson's SquareConnectionCircuits) ----------
    * Walk from every starting point 1..8: first step internal, then
    * alternate external k->k+1 (cyclic) and internal. Keep the FIRST
@@ -432,7 +446,8 @@ const Truchet = (function () {
 
   return {
     PPS, NP, PT, SIDE, INWARD, coordinate,
-    CONNECTION_SETS, TILE_NAMES, NAMED_TILES, connIdxByName, nameForConnIdx,
+    CONNECTION_SETS, TILE_NAMES, MOTIF_NAMES, NAMED_TILES,
+    connIdxByName, nameForConnIdx,
     mulberry32, seedFromString, randSeed,
     traceCircuits, circuitSegments, circuitPolygon, sampleArc, getTile, tileDepth,
     randomSubdivision, gridTiling, checkerboardTiling, surroundTiling,

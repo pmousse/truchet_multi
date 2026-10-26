@@ -135,7 +135,8 @@ def cell_mask(x0, x1, y0, y1):
 
 
 oracle = {n: oracle_mask(n) for n in port.TILE_ORDER}
-names = port.TILE_ORDER
+# the picker shows Carlson's 15 motifs (mix cell is dark, never detected)
+names = port.MOTIF_NAMES
 bad = 0
 for k, expect in enumerate(names):
     if k >= len(cells):

@@ -74,11 +74,12 @@ button.primary:hover { filter: brightness(1.1); }
 }
 #seedRow input { font-family: ui-monospace, Consolas, monospace; }
 #motifGrid {
-  display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
   margin-top: 6px;
 }
 #motifGrid canvas {
   width: 100%; aspect-ratio: 1; border-radius: 4px; cursor: pointer;
+  /* 4 columns keeps the 16 motif cells (mix + 15 tiles) crisp */
   border: 1px solid var(--panel-line); background: #fff;
 }
 #motifGrid canvas.sel { border-color: var(--accent); border-width: 2px; }

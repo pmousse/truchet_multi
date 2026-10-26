@@ -181,6 +181,12 @@ TILE_NAME_MAPPING = {
 
 TILE_ORDER = sorted(TILE_NAME_MAPPING, key=lambda k: TILE_NAME_MAPPING[k])
 
+# The 15 tiles Carlson shows in his motifs figure, in his grid order -- this is
+# what the app's motif picker offers (see src/engine.js MOTIF_NAMES).
+MOTIF_NAMES = ['\\', '/', '-', '|', '+.', 'x.', '+',
+               'fnw', 'fne', 'fse', 'fsw',
+               'tn', 'te', 'ts', 'tw']
+
 
 def tile_connections(name):
     return all_square2_connection_sets()[TILE_NAME_MAPPING[name] - 1]

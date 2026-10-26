@@ -65,10 +65,11 @@
     const sorted = tiles.slice().sort(
       (a, b) => (a.x - b.x) || (a.y - b.y) || (a.s - b.s));
     for (const t of sorted) {
-      map.set(t.x + ',' + t.y + ',' + t.s,
-        1 + Math.floor(rnd() * T.TILE_NAMES.length));
+      const name = T.MOTIF_NAMES[Math.floor(rnd() * T.MOTIF_NAMES.length)];
+      map.set(t.x + ',' + t.y + ',' + t.s, T.NAMED_TILES[name]);
     }
-    return (depth, t) => map.get(t.x + ',' + t.y + ',' + t.s) || 8;
+    return (depth, t) => map.get(t.x + ',' + t.y + ',' + t.s) ||
+      T.connIdxByName('/');
   }
   function buildPalette(tiles) {
     if (S.pal !== 'custom') return T.PALETTES[S.pal] || T.PALETTES.bw;
@@ -229,7 +230,7 @@
     exportPNG(w, h);
   });
 
-  /* motif picker: 24 previews + mix cell */
+  /* motif picker: the 15 tiles from Carlson's motifs figure, plus a mix cell */
   const grid = $('motifGrid');
   let previewCanvases = [];
   function buildMotifGrid() {
@@ -239,7 +240,7 @@
     mix.dataset.motif = 'mix';
     grid.appendChild(mix);
     previewCanvases = [mix];
-    for (const name of T.TILE_NAMES) {
+    for (const name of T.MOTIF_NAMES) {
       const c = document.createElement('canvas');
       c.title = name; c.dataset.motif = name;
       grid.appendChild(c);
@@ -289,6 +290,8 @@
 
   /* ================= boot ================= */
   readHash();
+  // tiles outside Carlson's 15 (old links) fall back to the default motif
+  if (S.motif !== 'mix' && T.MOTIF_NAMES.indexOf(S.motif) < 0) S.motif = '/';
   pushToInputs();
   buildMotifGrid();
   refreshParamVisibility();

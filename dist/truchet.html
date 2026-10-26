@@ -81,11 +81,12 @@ button.primary:hover { filter: brightness(1.1); }
 }
 #seedRow input { font-family: ui-monospace, Consolas, monospace; }
 #motifGrid {
-  display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
   margin-top: 6px;
 }
 #motifGrid canvas {
   width: 100%; aspect-ratio: 1; border-radius: 4px; cursor: pointer;
+  /* 4 columns keeps the 16 motif cells (mix + 15 tiles) crisp */
   border: 1px solid var(--panel-line); background: #fff;
 }
 #motifGrid canvas.sel { border-color: var(--accent); border-width: 2px; }
@@ -308,6 +309,20 @@ const Truchet = (function () {
   for (const [name, idx] of Object.entries(NAMED_TILES)) TILE_NAME[idx] = name;
   const TILE_NAMES = Object.keys(NAMED_TILES).sort(
     (a, b) => NAMED_TILES[a] - NAMED_TILES[b]);
+
+  /* The 15 tiles Carlson actually shows in his motifs figure, in his grid
+   * order (verified against motifs.png: every cell matches one of these at
+   * IoU 0.80-0.90 with a single fitted square size of 37.5px on an 87x90
+   * pitch).  The other nine names in SquareTileNameMapping -- the four
+   * rotation variants of the Y tile (yn ye ys yw), the four rotation variants
+   * of the anchor tile (anw ane ase asw) and 'p' -- are real tiles in his
+   * code but are not part of that showcase, so the UI does not offer them.
+   */
+  const MOTIF_NAMES = [
+    '\\', '/', '-', '|', '+.', 'x.', '+',
+    'fnw', 'fne', 'fse', 'fsw',
+    'tn', 'te', 'ts', 'tw'
+  ];
 
   /* ---------- circuits (Carlson's SquareConnectionCircuits) ----------
    * Walk from every starting point 1..8: first step internal, then
@@ -648,7 +663,8 @@ const Truchet = (function () {
 
   return {
     PPS, NP, PT, SIDE, INWARD, coordinate,
-    CONNECTION_SETS, TILE_NAMES, NAMED_TILES, connIdxByName, nameForConnIdx,
+    CONNECTION_SETS, TILE_NAMES, MOTIF_NAMES, NAMED_TILES,
+    connIdxByName, nameForConnIdx,
     mulberry32, seedFromString, randSeed,
     traceCircuits, circuitSegments, circuitPolygon, sampleArc, getTile, tileDepth,
     randomSubdivision, gridTiling, checkerboardTiling, surroundTiling,
@@ -728,10 +744,11 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     const sorted = tiles.slice().sort(
       (a, b) => (a.x - b.x) || (a.y - b.y) || (a.s - b.s));
     for (const t of sorted) {
-      map.set(t.x + ',' + t.y + ',' + t.s,
-        1 + Math.floor(rnd() * T.TILE_NAMES.length));
+      const name = T.MOTIF_NAMES[Math.floor(rnd() * T.MOTIF_NAMES.length)];
+      map.set(t.x + ',' + t.y + ',' + t.s, T.NAMED_TILES[name]);
     }
-    return (depth, t) => map.get(t.x + ',' + t.y + ',' + t.s) || 8;
+    return (depth, t) => map.get(t.x + ',' + t.y + ',' + t.s) ||
+      T.connIdxByName('/');
   }
   function buildPalette(tiles) {
     if (S.pal !== 'custom') return T.PALETTES[S.pal] || T.PALETTES.bw;
@@ -892,7 +909,7 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     exportPNG(w, h);
   });
 
-  /* motif picker: 24 previews + mix cell */
+  /* motif picker: the 15 tiles from Carlson's motifs figure, plus a mix cell */
   const grid = $('motifGrid');
   let previewCanvases = [];
   function buildMotifGrid() {
@@ -902,7 +919,7 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     mix.dataset.motif = 'mix';
     grid.appendChild(mix);
     previewCanvases = [mix];
-    for (const name of T.TILE_NAMES) {
+    for (const name of T.MOTIF_NAMES) {
       const c = document.createElement('canvas');
       c.title = name; c.dataset.motif = name;
       grid.appendChild(c);
@@ -952,6 +969,8 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
 
   /* ================= boot ================= */
   readHash();
+  // tiles outside Carlson's 15 (old links) fall back to the default motif
+  if (S.motif !== 'mix' && T.MOTIF_NAMES.indexOf(S.motif) < 0) S.motif = '/';
   pushToInputs();
   buildMotifGrid();
   refreshParamVisibility();

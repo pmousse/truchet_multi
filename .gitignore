@@ -3,3 +3,4 @@ __pycache__/
 dev/cmp_*.png
 crop_*.png
 tmp/
+dev/browse/

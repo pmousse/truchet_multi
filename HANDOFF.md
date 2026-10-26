@@ -1,25 +1,30 @@
 # TRUCHET STUDIO — SESSION HANDOFF (read this first in the new session)
 
-Project dir: `D:/_truchet`  (git repo, commit `a7d71e0` is latest)
+Project dir: `D:/_truchet`  (git repo)
 
 ## What this project is
 Single-file HTML app faithfully reimplementing Christopher Carlson's
 Multi-Scale Truchet Patterns (christophercarlson.com). Vanilla JS + canvas.
 Plan: 5 tabs (Generator, Fill, Photo, Composer, Mandala) on one engine.
 
-## Status
+## Status (shape bug RESOLVED — picker now shows Carlson's 15 motifs)
 - ENGINE (`src/engine.js`) = literal port of Carlson's Wolfram package
   (`mstp/MultiScaleTruchetPatterns.wl`). Validated against Python oracle
   `dev/port.py` via `dev/gold.json` — `node dev/check_gold.js` → 24/24 PASS.
-- UI Phase 1d built: `index.html` (dev page) + `src/app.js` (Generator tab:
-  seed, 5 tiling types, 24-motif picker grid, palettes, PNG export,
-  URL-hash share state). `node build.js` → `dist/truchet.html` (single file).
-- OPEN ISSUE: user reports Generator/motif previews STILL show bad shapes
-  after the fill-rule fix (see below). User says: "no it doesn't work,
-  same issue in the 'motifs'". NOT YET VISUALLY VERIFIED IN A BROWSER —
-  the new session (VS Code + browser/screenshot access) must verify live.
+- UI Phase 1d: `index.html` (dev page) + `src/app.js` (Generator tab: seed,
+  5 tiling types, motif picker, palettes, PNG export, URL-hash share state).
+  `node build.js` → `dist/truchet.html` (single file, ~37 KB).
+- Motif picker = **the 15 tiles Carlson shows in motifs.png**, in his grid
+  order, 4 columns + a `mix` cell (see "Which 15 tiles, measured" below).
+  Verified live: `python dev/_appqa.py <app screenshot> 0 0 600 2000` → 15/15
+  previews match the oracle; `python dev/_tilesqa.py` → 0 deep holes and 0
+  deep extra pixels on all 24 engine tiles.
+- Fill rule settled empirically: NONZERO (`ctx.fill()`, no 'evenodd').
+  DevTools on the live page confirms it (`getComputedStyle`-free check:
+  preview canvases are backing-store scaled by devicePixelRatio, and
+  `Truchet.renderPolygons` no longer exists).
 
-## The shape bug — what we know so far
+## The shape bug — history (kept for context)
 User annotated `dev/motifs_red.jpg`: flagged tiles are yn, ye, ys, yw,
 anw, ane, asw (and the selected asw). Symptom: white slits / curved-triangle
 holes inside tiles, "broken lens" segments, pattern bleeding off canvas edge.
@@ -115,18 +120,49 @@ holes inside tiles, "broken lens" segments, pattern bleeding off canvas edge.
 - Seeds: base36 token, mulberry32; state in URL hash. Export filename encodes
   params (no watermark).
 
-## Next actions for the new (browser-equipped) session
-1. Serve/open `index.html`; screenshot the motif grid + a tn checkerboard
-   pattern. Compare against `flag_sheet.png` / `ours_nonzero_sheet_x2.png`.
-2. If grid still shows holes: it's browser-side — then instrument a single
-   yn tile render in DevTools: log circuits + winding, try variants
-   (nonzero vs evenodd vs paint-per-circuit vs circuit-arc-order changes)
-   and screenshot each. Decide which matches Carlson's published look.
-3. Also check preview FRAMING: fitTransform s/3 margin may now make single-tile
-   previews zoom out / clip differently than the user expects.
-4. Once motif grid matches Carlson visually → re-verify full patterns with
-   `dev/diff_canvas.py` against port.py renders → commit → Phase 2
-   (Fill + Photo tabs).
+## Browser QA toolkit (this session added it — use it, it works)
+Headless Chrome is how everything gets verified now:
+
+```
+"/c/Program Files/Google/Chrome/Application/chrome.exe" --headless=new \
+  --disable-gpu --hide-scrollbars --window-size=1200,1000 \
+  --force-device-scale-factor=2 --virtual-time-budget=4000 \
+  --screenshot="D:/_truchet/dev/browse/app_15.png" \
+  "file:///D:/_truchet/index.html?cb=x"
+python dev/_appqa.py dev/browse/app_15.png 0 0 600 2000   # 15/15 previews OK
+python dev/_tilesqa.py                                    # holes / extra pixels
+python dev/_motifs15b.py dev/carlson_motifs.png           # who is who in his figure
+python dev/_cmp_tile.py tn                                # chrome|oracle|diff strip
+```
+Gotchas already paid for: `_appqa.py` finds cells by flooding the DARK panel
+background (cell interiors stay unvisited, so black shapes inside a cell are
+safe), samples each cell near its centre (block-averaging fails on ~40px
+cells), and the oracle must be padded 0.04 to match `fitTransform`.
+`port.arc_circuit_polygon(2, circ)` — pps=2 is what the engine uses; pps=5
+renders different geometry and produced phantom "hole" reports.
+
+## Which 15 tiles, measured (not guessed)
+`python dev/_motifs15b.py dev/carlson_motifs.png` clusters Carlson's motifs.png
+ink into 15 cells, fits one square per cell from oracle geometry (fitted size
+37.5 px on an 87x90 pitch, identical for all 15) and scores IoU against all 24
+names x 4 rotations. IoU 0.80-0.90, no ambiguity:
+
+    \  /  -  |  +.  x.  +        2 diagonals, 2 bars, empty, star, plus
+    fnw fne fse fsw              the four "f" tiles = fnw rotated 0/90/180/270
+    tn  te  ts  tw               the four "t" tiles = tn rotated the same
+
+Absent from his figure: the four "y" tiles (yn ye ys yw), the four "anchor"
+tiles (anw ane ase asw) and `p` — exactly the eight self-overlapping tiles the
+user had flagged as broken, plus `p`. They are still valid tiles in Carlson's
+`SquareTileNameMapping` and stay in the engine, but the UI no longer offers
+them. Engine exports `T.MOTIF_NAMES` (the 15) and `T.TILE_NAMES` (all 24);
+old links selecting a removed tile fall back to `/`.
+
+## Next actions
+1. Generator rendering: nothing open. If a tile is ever reported broken, ask
+   for the URL hash (copy-link encodes every parameter) or a saved screenshot
+   and reproduce it headlessly — do not guess.
+2. Phase 2: Fill + Photo tabs (README plan) on the same engine.
 
 ## User preferences
 Faithful port, not stylized. Single-file HTML, vanilla JS, no deps. Dark

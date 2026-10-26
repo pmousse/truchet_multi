@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>capture</title>
+<style>body{margin:0}</style>
+</head>
+<body>
+<script src="../src/engine.js"></script>
+<script>
+'use strict';
+/* Renders fixed scenes with the exact app.js drawing code and dumps each
+ * canvas as base64 PNG into <pre id="out"> so `chrome --dump-dom` can grab
+ * bit-perfect canvas pixels (no puppeteer needed). */
+const T = window.Truchet;
+const out = [];
+function dump(name, c) {
+  out.push(name + '\t' + c.toDataURL('image/png').slice('data:image/png;base64,'.length));
+}
+
+function drawScene(c, tiles, opts) {
+  const cx = c.getContext('2d');
+  cx.setTransform(1, 0, 0, 1, 0, 0);
+  cx.fillStyle = T.PALETTES.bw[1];
+  cx.fillRect(0, 0, c.width, c.height);
+  T.fitTransform(cx, tiles, c.width, c.height, opts.pad);
+  T.renderTiling(cx, tiles, {
+    pickTile: opts.pick,
+    palette: T.PALETTES.bw
+  });
+}
+
+const sceneDefs = [
+  ['chk4',  () => T.checkerboardTiling(4),            760, 760, 0.02],
+  ['chk6',  () => T.checkerboardTiling(6),            760, 760, 0.02],
+  ['sur3',  () => T.surroundTiling(3),                760, 760, 0.02],
+  ['rand',  () => T.randomSubdivision(
+      T.mulberry32(T.seedFromString('k7x2m9')), 12, 4), 760, 760, 0.02],
+  ['tn3',   () => T.gridTiling(3, 3),                 760, 760, 0.02]
+];
+for (const [name, mk, w, h, pad] of sceneDefs) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  drawScene(c, mk(), { pad, pick: () => T.connIdxByName('/') });
+  dump(name, c);
+}
+
+/* tn grid with per-tile names ['tn' style variant check on checkerboard]:
+ * a 4x4 checkerboard where every tile is 'tn' — deep wings must not be
+ * erased by neighbours (wing-erasing race hypothesis). */
+{
+  const c = document.createElement('canvas');
+  c.width = 760; c.height = 760;
+  drawScene(c, T.checkerboardTiling(4), {
+    pad: 0.02, pick: () => T.connIdxByName('tn')
+  });
+  dump('chk4_tn', c);
+}
+
+/* motif previews exactly as app.js builds them (88px, fit pad .04) */
+for (const name of T.TILE_NAMES) {
+  const c = document.createElement('canvas');
+  c.width = 88; c.height = 88;
+  const cx = c.getContext('2d');
+  cx.fillStyle = '#fff'; cx.fillRect(0, 0, 88, 88);
+  T.fitTransform(cx, [{ x: 0, y: 0, s: 1 }], 88, 88, 0.04);
+  T.renderTiling(cx, [{ x: 0, y: 0, s: 1 }], {
+    pickTile: () => T.connIdxByName(name),
+    palette: T.PALETTES.bw
+  });
+  dump('pv_' + name, c);
+}
+
+/* large clean renders of every tile at 256px (fit pad 0) for visual QA */
+{
+  const names = T.TILE_NAMES;
+  const cols = 6, rows = Math.ceil(names.length / cols), S = 256;
+  // render each tile on its own offscreen canvas (fitTransform resets the
+  // transform), then blit into the sheet
+  const c2 = document.createElement('canvas');
+  c2.width = cols * S; c2.height = rows * S;
+  const cx2 = c2.getContext('2d');
+  cx2.fillStyle = '#fff'; cx2.fillRect(0, 0, c2.width, c2.height);
+  names.forEach((name, k) => {
+    const tileCanvas = document.createElement('canvas');
+    tileCanvas.width = S; tileCanvas.height = S;
+    const tc = tileCanvas.getContext('2d');
+    T.fitTransform(tc, [{ x: 0, y: 0, s: 1 }], S, S, 0);
+    T.renderTiling(tc, [{ x: 0, y: 0, s: 1 }], {
+      pickTile: () => T.connIdxByName(name),
+      palette: T.PALETTES.bw
+    });
+    cx2.drawImage(tileCanvas, (k % cols) * S, Math.floor(k / cols) * S);
+  });
+  // grid lines for readability
+  cx2.strokeStyle = '#bbb';
+  for (let i = 0; i <= cols; i++) { cx2.beginPath(); cx2.moveTo(i*S,0); cx2.lineTo(i*S,c2.height); cx2.stroke(); }
+  for (let j = 0; j <= rows; j++) { cx2.beginPath(); cx2.moveTo(0,j*S); cx2.lineTo(c2.width,j*S); cx2.stroke(); }
+  dump('sheet256', c2);
+}
+
+const pre = document.createElement('pre');
+pre.id = 'out';
+pre.textContent = out.join('\n');
+document.body.appendChild(pre);
+</script>
+</body>
+</html>
