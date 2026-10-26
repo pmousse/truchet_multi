@@ -262,8 +262,12 @@ const Truchet = (function () {
   function makeTile(x, y, s) { return { x, y, s }; }
 
   /* RandomSquareSubdivisionTiling[n, d] */
-  function randomSubdivision(random, n, maxDepth = Infinity) {
-    let tiles = [makeTile(0, 0, 1)];
+  /* RandomSquareSubdivisionTiling[n, d]: pick a random tile, split it into
+   * four. seedTiles lets the same process run over a rectangular lattice of
+   * unit squares (needed to fill a non-square frame without cropping). */
+  function randomSubdivision(random, n, maxDepth = Infinity, seedTiles) {
+    let tiles = (seedTiles && seedTiles.length) ? seedTiles.slice()
+      : [makeTile(0, 0, 1)];
     for (let k = 0; k < n; k++) {
       const cands = [];
       tiles.forEach((t, i) => { if (tileDepth(t) < maxDepth) cands.push(i); });
@@ -284,11 +288,12 @@ const Truchet = (function () {
     return out;
   }
 
-  /* CheckerboardTiling[n] */
-  function checkerboardTiling(n) {
+  /* CheckerboardTiling[n] — n columns by m rows (m defaults to n). */
+  function checkerboardTiling(nx, ny) {
+    const cols = nx, rows = (ny === undefined ? nx : ny);
     const out = [];
-    for (let i = 0; i < n; i++)
-      for (let j = 0; j < n; j++) {
+    for (let i = 0; i < cols; i++)
+      for (let j = 0; j < rows; j++) {
         if ((i + j) % 2 === 0) out.push(makeTile(i, j, 1));
         else {
           out.push(makeTile(i, j, 0.5), makeTile(i, j + 0.5, 0.5),
@@ -317,10 +322,11 @@ const Truchet = (function () {
     }
     return out;
   }
-  function surroundTiling(n) {
+  function surroundTiling(nx, ny) {
+    const cols = nx, rows = (ny === undefined ? nx : ny);
     const unit = surroundUnit(), out = [];
-    for (let i = 0; i < n; i++)
-      for (let j = 0; j < n; j++)
+    for (let i = 0; i < cols; i++)
+      for (let j = 0; j < rows; j++)
         for (const t of unit) out.push(makeTile(t.x + 1.5 * i, t.y + 1.5 * j, t.s));
     return dedupTiles(out);
   }

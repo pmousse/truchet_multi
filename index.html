@@ -39,13 +39,10 @@
       <option value="sur">surround</option>
       <option value="off">offset surround</option>
     </select></div>
-    <div class="row" id="rowN"><label>size n</label><input type="number" id="inN" min="1" max="24"></div>
-    <div class="row" id="rowGrid"><label>rows</label><input type="number" id="inRows" min="1" max="24">
-      <label>cols</label><input type="number" id="inCols" min="1" max="24"></div>
-    <div class="row wrap" id="rowRand"><label>splits</label><input type="number" id="inSplits" min="1" max="200">
+    <div class="row" id="rowN"><label>tiles n</label><input type="number" id="inN" min="1" max="32">
+      <span class="hint">density, snapped to frame ratio</span></div>
+    <div class="row wrap" id="rowRand"><label>splits</label><input type="number" id="inSplits" min="1" max="400">
       <label>max depth</label><input type="number" id="inMaxd" min="1" max="10"></div>
-    <div class="row" id="rowOff"><label>cols</label><input type="number" id="inOffM" min="1" max="24">
-      <label>rows</label><input type="number" id="inOffN" min="1" max="24"></div>
 
     <div class="sect">Motif</div>
     <div id="motifGrid"></div>
@@ -70,23 +67,39 @@
       <label>ground</label><input type="color" id="inBg">
     </div>
 
-    <div class="sect">Framing</div>
+    <div class="sect">Frame</div>
+    <div class="row"><select id="selFormat">
+      <option value="1:1">square 1:1 &nbsp;— social</option>
+      <option value="16:9">desktop 16:9</option>
+      <option value="9:16">phone 9:16</option>
+      <option value="21:9">ultrawide 21:9</option>
+      <option value="4:3">landscape 4:3</option>
+      <option value="3:2">landscape 3:2</option>
+      <option value="5:4">landscape 5:4</option>
+      <option value="4:5">portrait 4:5</option>
+      <option value="3:4">portrait 3:4</option>
+      <option value="2:3">portrait 2:3</option>
+      <option value="2:1">double wide 2:1</option>
+      <option value="1:2">double tall 1:2</option>
+      <option value="custom">custom size…</option>
+    </select></div>
+    <div class="row wrap" id="rowFrameSize">
+      <label>width</label><input type="number" id="inFrameW" min="32" max="8192" step="1">
+      <label>height</label><input type="number" id="inFrameH" min="32" max="8192" step="1">
+    </div>
+    <div class="row" id="rowRes"><label>long edge</label>
+      <select id="selRes">
+        <option value="1024">1K (1024 px)</option>
+        <option value="2048">2K (2048 px)</option>
+        <option value="2560">2.5K (2560 px)</option>
+        <option value="3840">4K (3840 px)</option>
+        <option value="4096">4K+ (4096 px)</option>
+      </select></div>
     <div class="row"><label>margin</label><input type="range" id="inPad" min="0" max="20" step="1"><span id="outPad"></span></div>
+    <div class="row"><span id="frameInfo" class="info"></span></div>
 
     <div class="sect">Export PNG</div>
     <div class="row wrap" id="exportRow">
-      <select id="selRes">
-        <option value="1024">1K</option>
-        <option value="2048" selected>2K</option>
-        <option value="4096">4K</option>
-      </select>
-      <select id="selAspect">
-        <option value="1">square</option>
-        <option value="1.25">portrait 4:5</option>
-        <option value="0.8">landscape 5:4</option>
-        <option value="1.5">portrait 2:3</option>
-        <option value="0.6667">landscape 3:2</option>
-      </select>
       <button class="action primary" id="btnExport">export ↓</button>
     </div>
     <div id="fileName"></div>

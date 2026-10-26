@@ -71,7 +71,11 @@ for sy in range(Y0, Y1):
                     stack.append((nx, ny))
         if b.n > 900:
             boxes.append(b)
-cells = boxes
+# keep only square-ish blobs: a preview cell is roughly square. Without this a
+# thin strip of panel edge leaking into the region counts as a "cell" and
+# shifts the index mapping.
+cells = [b for b in boxes
+         if 20 <= (b.x1 - b.x0) <= 140 and 20 <= (b.y1 - b.y0) <= 140]
 # row-major order: cluster rows by y center, then sort each row by x
 rows = []
 for c in sorted(cells, key=lambda c: (c.y0 + c.y1) / 2):

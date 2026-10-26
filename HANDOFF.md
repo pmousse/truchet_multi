@@ -158,11 +158,55 @@ user had flagged as broken, plus `p`. They are still valid tiles in Carlson's
 them. Engine exports `T.MOTIF_NAMES` (the 15) and `T.TILE_NAMES` (all 24);
 old links selecting a removed tile fall back to `/`.
 
+## Framing model (wallpapers + social sizes) — this session
+
+User intent: make desktop/phone wallpapers and square social posts, and the
+preview must be the picture that gets exported. Crop-free filling was the
+explicit request ("if I choose landscape 4K I should see the tiles displayed in
+a 3840 x 2160 canvas").
+
+What replaced the old behaviour:
+
+- **Old**: square tiling, then Carlson-style crop (or letterbox) to the frame.
+  Tiles got cut off; grid mode kept its square 3x3 inside a wide canvas.
+- **New**: the *tiling* is generated for the frame. `lattice()` returns integer
+  `cols x rows` of square tiles whose ratio equals the frame ratio; the render
+  scales that lattice to the canvas, so it fills edge to edge. `drawScene`
+  uses cover-scaling (`Math.max`) plus `renderTiling({bounds})`; the crop path
+  and `drawCropped`/`boundsOf` are gone.
+- Engine builders gained a second argument: `checkerboardTiling(cols, rows)`,
+  `surroundTiling(cols, rows)`, `randomSubdivision(rnd, n, maxd, seedTiles)`
+  (seeded from `gridTiling(rows, cols)`). Single-argument calls still give the
+  original square behaviour, so `dev/check_gold.js` and the oracle are unchanged.
+- `offsetSurroundTiling(m, n)` is (rows, cols) — matching the source's
+  `{i,0,n-1}` on x and `{j,0,m-1}` on y. The old app call had these swapped.
+- Frame formats in `src/app.js` `FRAME_FORMATS`: 1:1, 16:9, 9:16, 21:9, 4:3,
+  3:4, 3:2, 2:3, 5:4, 4:5, 2:1, 1:2, custom W x H. Long-edge presets 1K/2K/
+  2.5K/4K(3840)/4K+(4096).
+- Preset export sizes are snapped to a whole multiple of the lattice, so 16:9
+  at 4K is exactly **3840 x 2160**, at 2K exactly 2048 x 1152. Custom sizes are
+  used verbatim; `reduceRatio()` (gcd, then continued-fraction convergents
+  capped at `MAX_LATTICE_SIDE = 40`) picks the nearest lattice, and cover
+  scaling clips the sub-1% sliver.
+- `n` is now a *density* control: it is snapped to the frame ratio, so 16:9
+  quantizes the short side to multiples of 9 (9, 18, 27...). The panel prints
+  `16 × 9 tiles · 3840 × 2160 px` in `#frameInfo` so the snap is visible, not
+  hidden. This is inherent: square tiles only tile rational-ratio rectangles.
+- `rows`/`cols` and `offCols`/`offRows` inputs were removed (the frame ratio
+  sets them). Hash keys changed: `F` (format), `rs`, `fw`, `fh`; the old
+  `rows/cols/oc/or` keys are ignored by old links, which land on 1:1 — same
+  output as before.
+- QA note: `dev/_appqa.py` now discards non-square blobs when detecting preview
+  cells, because the stage starts at the panel edge (`#stage { left:300px }`) and
+  a thin strip used to be counted as a cell, shifting the index mapping.
+
 ## Next actions
 1. Generator rendering: nothing open. If a tile is ever reported broken, ask
    for the URL hash (copy-link encodes every parameter) or a saved screenshot
    and reproduce it headlessly — do not guess.
 2. Phase 2: Fill + Photo tabs (README plan) on the same engine.
+3. Possible framing follow-ups: per-format saved presets, JPEG/WebP export, and
+   multi-monitor sizes (e.g. 5120 x 1440) via the custom W x H row.
 
 ## User preferences
 Faithful port, not stylized. Single-file HTML, vanilla JS, no deps. Dark

@@ -13,8 +13,14 @@ body {
   background: #000;
   overflow: hidden;
 }
-#stage { position: absolute; inset: 0; }
-#mainCanvas { display: block; width: 100%; height: 100%; }
+#stage {
+  position: absolute; top: 0; right: 0; bottom: 0; left: 300px;
+  display: flex; align-items: center; justify-content: center;
+  transition: left .25s ease;
+}
+body.panel-hidden #stage { left: 0; }
+/* size is set by app.js so the preview keeps the selected export aspect */
+#mainCanvas { display: block; }
 
 /* ---------- panel ---------- */
 #panel {
@@ -88,6 +94,11 @@ button.primary:hover { filter: brightness(1.1); }
   font-size: 15px; background: #23242c; color: var(--panel-dim);
 }
 #exportRow { display: flex; flex-wrap: wrap; gap: 6px; }
+.hint { font-size: 10.5px; color: var(--panel-dim); }
+.info {
+  font-size: 10.5px; color: var(--panel-dim);
+  font-family: ui-monospace, Consolas, monospace;
+}
 #fileName {
   font-size: 10.5px; color: var(--panel-dim);
   font-family: ui-monospace, Consolas, monospace;
