@@ -10,7 +10,7 @@
     n: 6,               // tiles (or surround units) along the SHORT side of the frame
     splits: 12, maxd: 4,// random subdivision
     seed: 'k7x2m9',
-    motif: '/',         // tile name or 'mix'
+    motifs: ['/'],      // selection set: motif names, 'mix', or several of both
     pal: 'bw',          // palette key or 'custom'
     c1: '#101018', c2: '#3a6ea5', bg: '#f4efe6', // custom ramp
     pad: 2,             // margin percent
@@ -40,12 +40,14 @@
 
   const HASH_KEYS = {
     tiling: 't', n: 'n', splits: 'sp',
-    maxd: 'md', seed: 'sd', motif: 'm', pal: 'p', c1: 'c1', c2: 'c2',
+    maxd: 'md', seed: 'sd', motifs: 'm', pal: 'p', c1: 'c1', c2: 'c2',
     bg: 'bg', pad: 'pd', format: 'F', res: 'rs', fw: 'fw', fh: 'fh'
   };
   function writeHash() {
     const p = new URLSearchParams();
-    for (const [k, h] of Object.entries(HASH_KEYS)) p.set(h, S[k]);
+    for (const [k, h] of Object.entries(HASH_KEYS)) {
+      p.set(h, Array.isArray(S[k]) ? S[k].join(',') : S[k]);
+    }
     location.hash = p.toString();
   }
   function readHash() {
@@ -53,7 +55,8 @@
     for (const [k, h] of Object.entries(HASH_KEYS)) {
       if (p.has(h)) {
         const v = p.get(h);
-        S[k] = (k in DEFAULTS && typeof DEFAULTS[k] === 'number') ? +v : v;
+        if (Array.isArray(DEFAULTS[k])) S[k] = v.split(',').filter(Boolean);
+        else S[k] = (k in DEFAULTS && typeof DEFAULTS[k] === 'number') ? +v : v;
       }
     }
   }
@@ -129,18 +132,33 @@
     }
     return T.checkerboardTiling(4, 4);
   }
+  /* The motif cells form a pool: one cell = that motif everywhere, several
+   * cells (ctrl+click) = one of them chosen at random per tile, exactly like
+   * 'mix' but restricted to the chosen subset. 'mix' means all 15. */
+  function motifPool() {
+    const sel = (S.motifs || []).filter(
+      (m) => m === 'mix' || T.MOTIF_NAMES.includes(m));
+    if (!sel.length) return ['/'];
+    if (sel.includes('mix')) return T.MOTIF_NAMES.slice();
+    return sel;
+  }
   function buildPicker(tiles) {
-    if (S.motif !== 'mix') {
-      const idx = T.connIdxByName(S.motif) || T.connIdxByName('/');
+    const pool = motifPool();
+    if (pool.length === 1) {
+      const idx = T.connIdxByName(pool[0]) || T.connIdxByName('/');
       return () => idx;
     }
-    // stable per-tile mix: sorted coords + fresh PRNG stream
-    const rnd = T.mulberry32(T.seedFromString(S.seed + '\u0001mix'));
+    /* stable per-tile assignment: sorted coords + a PRNG stream salted by the
+     * pool, so the layout is reproducible for a seed and changes when the
+     * selection changes */
+    const full = pool.length === T.MOTIF_NAMES.length;
+    const salt = full ? '\u0001mix' : '\u0001pool:' + pool.join(',');
+    const rnd = T.mulberry32(T.seedFromString(S.seed + salt));
     const map = new Map();
     const sorted = tiles.slice().sort(
       (a, b) => (a.x - b.x) || (a.y - b.y) || (a.s - b.s));
     for (const t of sorted) {
-      const name = T.MOTIF_NAMES[Math.floor(rnd() * T.MOTIF_NAMES.length)];
+      const name = pool[Math.floor(rnd() * pool.length)];
       map.set(t.x + ',' + t.y + ',' + t.s, T.NAMED_TILES[name]);
     }
     return (depth, t) => map.get(t.x + ',' + t.y + ',' + t.s) ||
@@ -230,7 +248,10 @@
     const L = lattice();
     const sizePart = L.cols + 'x' + L.rows;
     const pal = S.pal === 'custom' ? 'ramp' : S.pal;
-    const motif = S.motif === 'mix' ? 'mix' : sanitizeMotif(S.motif);
+    const pool = motifPool();
+    const isMix = pool.length === T.MOTIF_NAMES.length &&
+      pool.every((m, i) => m === T.MOTIF_NAMES[i]);
+    const motif = isMix ? 'mix' : pool.map(sanitizeMotif).join('-');
     return 'truchet_' + S.tiling + sizePart + '_' + S.seed + '_m' + motif +
       '_p' + pal + '_' + w + 'x' + h + '.png';
   }
@@ -316,7 +337,8 @@
   function buildMotifGrid() {
     grid.innerHTML = '';
     const mix = document.createElement('canvas');
-    mix.className = 'mix'; mix.title = 'mix (random per tile)';
+    mix.className = 'mix';
+    mix.title = 'mix — random from all 15 (ctrl+click to combine with others)';
     mix.dataset.motif = 'mix';
     grid.appendChild(mix);
     previewCanvases = [mix];
@@ -328,8 +350,17 @@
     }
     paintPreviews();
     previewCanvases.forEach((c) => {
-      c.addEventListener('click', () => {
-        S.motif = c.dataset.motif;
+      c.addEventListener('click', (ev) => {
+        const name = c.dataset.motif;
+        const additive = ev.ctrlKey || ev.metaKey || ev.shiftKey;
+        if (!additive) {
+          S.motifs = [name];                 // plain click: this motif only
+        } else {
+          const i = S.motifs.indexOf(name);  // ctrl/cmd/shift+click: toggle in pool
+          if (i >= 0) S.motifs.splice(i, 1);
+          else S.motifs.push(name);
+          if (!S.motifs.length) S.motifs = [name];  // the pool is never empty
+        }
         onChange();
       });
     });
@@ -364,14 +395,27 @@
   }
   function updateMotifSel() {
     grid.querySelectorAll('canvas').forEach((c) => {
-      c.classList.toggle('sel', c.dataset.motif === S.motif);
+      const on = S.motifs.includes(c.dataset.motif);
+      c.classList.toggle('sel', on);
+      c.classList.toggle('multi', on && S.motifs.length > 1);
     });
+    const el = $('motifInfo');
+    if (!el) return;
+    if (S.motifs.length > 1) {
+      el.textContent = `random pool of ${S.motifs.length}: ${S.motifs.join('  ')}`;
+    } else if (S.motifs[0] === 'mix') {
+      el.textContent = 'mix — random from all 15, one per tile';
+    } else {
+      el.textContent = `one motif everywhere: ${S.motifs[0]}`;
+    }
   }
 
   /* ================= boot ================= */
   readHash();
   // tiles outside Carlson's 15 (old links) fall back to the default motif
-  if (S.motif !== 'mix' && T.MOTIF_NAMES.indexOf(S.motif) < 0) S.motif = '/';
+  S.motifs = (S.motifs || []).filter(
+    (m) => m === 'mix' || T.MOTIF_NAMES.includes(m));
+  if (!S.motifs.length) S.motifs = ['/'];
   pushToInputs();
   buildMotifGrid();
   refreshParamVisibility();
