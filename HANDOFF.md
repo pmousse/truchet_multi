@@ -202,6 +202,15 @@ What replaced the old behaviour:
   cells, because the stage starts at the panel edge (`#stage { left:300px }`) and
   a thin strip used to be counted as a cell, shifting the index mapping.
 
+- **Motif pool (multi-select)**: the 15 motif cells plus `mix` are clickable.
+  Plain click = that motif everywhere. Ctrl/Cmd/Shift+click toggles a cell into a
+  *pool*; the tiling then picks one of the pooled motifs at random per tile —
+  the mix idea restricted to a chosen subset (e.g. fnw + tn only). `mix` in the
+  pool means all 15. Assignment is deterministic: `seed + salt(pool)` through
+  `mulberry32`, tiles keyed by `x,y,s`, so the same seed keeps the same layout
+  and changing the pool re-rolls it. State is `S.motifs` (array), hashed as
+  `m=a,b`; old single-motif links (`m=/`, `m=mix`) still load.
+
 ## Next actions
 1. Generator rendering: nothing open. If a tile is ever reported broken, ask
    for the URL hash (copy-link encodes every parameter) or a saved screenshot
