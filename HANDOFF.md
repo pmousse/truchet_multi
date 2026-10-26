@@ -7,13 +7,15 @@ Single-file HTML app faithfully reimplementing Christopher Carlson's
 Multi-Scale Truchet Patterns (christophercarlson.com). Vanilla JS + canvas.
 Plan: 5 tabs (Generator, Fill, Photo, Composer, Mandala) on one engine.
 
-## Status (shape bug RESOLVED — picker now shows Carlson's 15 motifs)
+## Status (Generator solid; Mandala tab added and QA-verified)
 - ENGINE (`src/engine.js`) = literal port of Carlson's Wolfram package
   (`mstp/MultiScaleTruchetPatterns.wl`). Validated against Python oracle
   `dev/port.py` via `dev/gold.json` — `node dev/check_gold.js` → 24/24 PASS.
-- UI Phase 1d: `index.html` (dev page) + `src/app.js` (Generator tab: seed,
-  5 tiling types, motif picker, palettes, PNG export, URL-hash share state).
-  `node build.js` → `dist/truchet.html` (single file, ~37 KB).
+- UI: `index.html` (dev page, loads `src/engine.js` + `src/mandala.js` +
+  `src/app.js` directly) + `src/app.js`. Tabs live: **Generator**, **Mandala**;
+  Fill / Photo / Composer are placeholders. `node build.js` →
+  `dist/truchet.html` (single file, ~63 KB). Always open `index.html` with a
+  cache-buster (`?v=<commit>`) when verifying.
 - Motif picker = **the 15 tiles Carlson shows in motifs.png**, in his grid
   order, 4 columns + a `mix` cell (see "Which 15 tiles, measured" below).
   Verified live: `python dev/_appqa.py <app screenshot> 0 0 600 2000` → 15/15
@@ -188,7 +190,7 @@ What replaced the old behaviour:
   ratio: 16:9 at 4K is **3840 x 2160**, 1:1 at 2K is 2048 x 2048, 4:5 at 4K is
   3072 x 3840. Sub-pixel ratio residue (21:9 is the worst, ~1 px) is absorbed by
   cover scaling. Custom sizes are used verbatim; `reduceRatio()` (gcd, then
-  continued-fraction convergents capped at `MAX_LATTICE_SIDE = 40`) picks the
+  continued-fraction convergents capped at `MAX_LATTICE_SIDE = 64`) picks the
   nearest lattice.
 - `n` is now a **density multiplier slider** (`density ×1 … ×N`), not a raw tile
   count. Square tiles only tile a p:q rectangle in multiples of (p, q), so the
@@ -217,13 +219,104 @@ What replaced the old behaviour:
   and changing the pool re-rolls it. State is `S.motifs` (array), hashed as
   `m=a,b`; old single-motif links (`m=/`, `m=mix`) still load.
 
+## Mandala tab (5th tab, this session)
+
+Radial Truchet: polar space instead of a square lattice. Concentric rings x
+angular sectors, each polar cell mapped to a unit square and filled with the
+*same* engine connection sets / arc geometry the Generator uses, so circuit
+continuity across seams works exactly like the square version.
+
+- `src/mandala.js` (loaded before `src/app.js`, exported as
+  `window.TruchetMandala`): `build({rings, sectors, sym, ringMode, seed, pool})`
+  -> `{cells, radii, dth, rings, maxDr, rInner, rOuter}`, plus
+  `render(ctx, model, {w, h, palette, invert, hub, pad})` and `mirrorSetX()`.
+- **The warp is conformal**: rings grow by `exp(dTheta)` with `dTheta = 2pi/sectors`,
+  and a cell maps `(u,v) -> r = r0 * (r1/r0)^v`, `th = th0 + u*dTheta`. Because
+  `ln(r1/r0) == dTheta`, local radial scale equals local angular scale: angles are
+  preserved, so tangent-continuous arcs stay tangent after warping. (Growing by
+  `1 + dTheta` instead - the first attempt - sheared the cells and opened visible
+  cracks.)
+- Cells are *not* clipped to their quads. A circuit's wings (which reach 1/3 of a
+  cell into the neighbour) must paint over the seam, and clipping them left nicks
+  at arm tips.
+- Carlson's circuit polygons contain near-osculating arc pairs (band edges that
+  touch with matched curvature, zero-area overlap in the square). The polar warp
+  opens those contacts into hairline lenses. Fix: after `ctx.fill()` every circuit
+  is also `ctx.stroke()`d in its own colour with `lineWidth = max(0.6,
+  s * rMid * dTheta * 0.045)`, which fattens bands just enough to close them.
+- Symmetry options: `free` (independent per cell), `mirror` (bilateral - draw
+  `sectors/2` cells, mirror the rest through `mirrorSetX`, which reflects the
+  connection set in x and is involutive for all 24 sets), `rotate x k` for
+  k = 2..8 (draw a `sectors/k` wedge, repeat). Seed salt is
+  `seed + '\u0001mandala:' + sectors + ':' + rings`.
+- Ring width: `auto` = geometric `exp(dTheta)` growth (cells read near-square);
+  `even` = uniform thickness 1.0 per ring. Fit radius = `rOuter + maxDr/3` so the
+  wings stay inside the canvas. `invert odd rings` swaps the two palette colours
+  on odd rings. Center hub: filled disc (`rInner*s*0.55`), outline ring
+  (`rInner*s`, `lineWidth = max(1, maxDr*s*0.12)`) or open.
+- Mandala frame is always square (`mandalaPx()`); exports as
+  `truchet_mandala_r<rings>s<sectors>_<seed>_<sym>_m<motif>_p<palette>_<w>x<h>.png`.
+- Hash keys: `rg` rings (1-12), `sc` sectors (6/8/12/16/20/24/32/48), `sy` sym,
+  `rw` ringMode, `mi` invert, `hb` hub; the Generator's motif pool, palette and
+  resolution controls are shared.
+
+### `+` in a URL hash was silently eating the `+` motif (fixed)
+`new URLSearchParams(location.hash)` decodes a literal `+` as a space, so a typed
+link like `#m=+` selected motif `" "` -> blank canvas, and a pool like
+`tn,fnw,+` lost its `+`. `writeHash()` percent-encodes correctly (`m=%2B`), so
+only typed/old links and hand-built QA queries were affected. Both `readHash()`
+in `src/app.js` and `q()` in `dev/mandtest.html` now pre-protect with
+`.replace(/\+/g, '%2B')`; the Python harnesses percent-encode query values.
+Verified: typed `m=+` and encoded `m=%2B` screenshots are byte-identical.
+
+## Mandala QA toolkit
+
+```
+node dev/_mandqa.js                 # structural model checks (mirror involution,
+                                    # seam sharing, exp(dTheta) radii, determinism)
+python dev/_mandqa.py               # pixel oracle matrix, PASS/FAIL gate
+python dev/_mandqa.py --img 5 12 mirror even tn,fnw,+ k7x2m9   # dump PNGs
+MANDQA_EDGE_R=2 python dev/_mandqa.py ...                      # tighten for debugging
+node dev/_mandgeo.js                # warp distortion bounds in parameter space
+```
+
+`dev/_mandqa.py` is the mandala oracle: it re-implements `build()`, the warp and
+the painter's order in Python on top of `dev/port.py`, rasterises it scanline by
+scanline (including the stroke dilation mandala.js applies - a span grows by
+`(sw/2) * sqrt(1 + (dx/dy)^2)` at a boundary crossing, capped, because real
+strokes use round joins), then compares against a headless-Chrome screenshot of
+`dev/mandtest.html` (a bare canvas page whose hash mirrors the app's params, at
+an exact pixel size). Mismatches are classified `edge` (a matching pixel exists
+within `EDGE_R`, i.e. an anti-aliased boundary) vs `deep` (a real region of
+disagreement), and `deep` run-length stats are printed so geometric drift shows
+up as wide runs. Current status: 38 deep px total over 6 configs (0.0025%), all
+1-4 px boundary residuals; gate = 60 deep px/case and runs <= 8 px.
+`--img` writes `dev/browse/mand_oracle.png`, `mand_browser.png`, `mand_diff.png`
+(red = oracle brighter, blue = oracle darker) and `mand_deep.png` (deep mask - a
+healthy run shows only thin crescents along band edges).
+
+The older `dev/_manddiff.py` was folded into `_mandqa.py` and deleted.
+`dev/port.py` gained a `step_deg` argument to `arc_points` /
+`arc_circuit_polygon` (arc tessellation density, default unchanged at 5 deg) so
+the mandala oracle can tessellate finely at polar resolution without changing
+Generator results.
+
 ## Next actions
 1. Generator rendering: nothing open. If a tile is ever reported broken, ask
    for the URL hash (copy-link encodes every parameter) or a saved screenshot
    and reproduce it headlessly — do not guess.
-2. Phase 2: Fill + Photo tabs (README plan) on the same engine.
-3. Possible framing follow-ups: per-format saved presets, JPEG/WebP export, and
+2. Mandala: rendering is verified (see Mandala QA toolkit). Open ideas:
+   per-ring motif pools (e.g. fnw in odd rings, tn in even), mandala palette
+   ramp already lerps c1→c2 across rings in custom mode, mandala JPEG/WebP
+   export, and optional spiral offset (shift each ring by half a sector).
+   If a mandala config ever looks wrong, run `python dev/_mandqa.py --img`
+   with that exact config and read `mand_deep.png`.
+3. Phase 2: Fill + Photo tabs (README plan) on the same engine.
+4. Possible framing follow-ups: per-format saved presets, JPEG/WebP export, and
    multi-monitor sizes (e.g. 5120 x 1440) via the custom W x H row.
+5. Rendering speed has never been measured; the user doubted it at ×4 density
+   (64 x 36 = 2304 tiles at 4K). A timing benchmark (×1 vs ×4, square vs 16:9)
+   is still worth doing.
 
 ## User preferences
 Faithful port, not stylized. Single-file HTML, vanilla JS, no deps. Dark

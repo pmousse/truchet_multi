@@ -17,11 +17,11 @@
     <h1>Truchet Studio</h1><span class="sub">multi-scale truchet patterns</span>
   </div>
   <nav id="tabs">
-    <button class="active">Generator</button>
+    <button class="active" data-tab="gen">Generator</button>
     <button disabled title="coming soon">Fill</button>
     <button disabled title="coming soon">Photo</button>
     <button disabled title="coming soon">Composer</button>
-    <button disabled title="coming soon">Mandala</button>
+    <button data-tab="mandala">Mandala</button>
   </nav>
   <div id="panelBody">
 
@@ -31,6 +31,7 @@
       <button class="action" id="btnCopyLink" title="copy shareable URL">copy link</button>
     </div>
 
+    <div id="genParams">
     <div class="sect">Tiling</div>
     <div class="row"><select id="selTiling">
       <option value="chk">checkerboard</option>
@@ -43,6 +44,61 @@
       <span id="outN" class="info"></span></div>
     <div class="row wrap" id="rowRand"><label>splits</label><input type="number" id="inSplits" min="1" max="400">
       <label>max depth</label><input type="number" id="inMaxd" min="1" max="10"></div>
+
+    <div class="sect">Frame</div>
+    <div class="row"><select id="selFormat">
+      <option value="1:1">square 1:1 &nbsp;— social</option>
+      <option value="16:9">desktop 16:9</option>
+      <option value="9:16">phone 9:16</option>
+      <option value="21:9">ultrawide 21:9</option>
+      <option value="4:3">landscape 4:3</option>
+      <option value="3:2">landscape 3:2</option>
+      <option value="5:4">landscape 5:4</option>
+      <option value="4:5">portrait 4:5</option>
+      <option value="3:4">portrait 3:4</option>
+      <option value="2:3">portrait 2:3</option>
+      <option value="2:1">double wide 2:1</option>
+      <option value="1:2">double tall 1:2</option>
+      <option value="custom">custom size…</option>
+    </select></div>
+    <div class="row wrap" id="rowFrameSize">
+      <label>width</label><input type="number" id="inFrameW" min="32" max="8192" step="1">
+      <label>height</label><input type="number" id="inFrameH" min="32" max="8192" step="1">
+    </div>
+    </div><!-- /genParams -->
+
+    <div id="mandParams">
+      <div class="sect">Mandala</div>
+      <div class="row"><label>rings</label><input type="range" id="inRings" min="1" max="12" step="1">
+        <span id="outRings" class="info"></span></div>
+      <div class="row"><label>sectors</label><select id="selSectors">
+        <option value="6">6</option><option value="8">8</option>
+        <option value="12">12</option><option value="16">16</option>
+        <option value="20">20</option><option value="24">24</option>
+        <option value="32">32</option><option value="48">48</option>
+      </select></div>
+      <div class="row"><label>symmetry</label><select id="selSym">
+        <option value="free">free random</option>
+        <option value="mirror">mirror (bilateral)</option>
+        <option value="2">rotate ×2</option>
+        <option value="3">rotate ×3</option>
+        <option value="4">rotate ×4</option>
+        <option value="5">rotate ×5</option>
+        <option value="6">rotate ×6</option>
+        <option value="8">rotate ×8</option>
+      </select></div>
+      <div class="row"><label>ring width</label><select id="selRingMode">
+        <option value="auto">grow · near-square cells</option>
+        <option value="even">uniform rings</option>
+      </select></div>
+      <div class="row"><label>invert odd rings</label><input type="checkbox" id="inMInv"></div>
+      <div class="row"><label>center</label><select id="selHub">
+        <option value="disc">filled disc</option>
+        <option value="ring">outline ring</option>
+        <option value="none">open</option>
+      </select></div>
+      <div class="row"><span class="hint">radial Truchet: every ring keeps the same sector count, so arcs cross every seam continuously</span></div>
+    </div>
 
     <div class="sect">Motif</div>
     <div id="motifGrid"></div>
@@ -69,27 +125,8 @@
       <label>ground</label><input type="color" id="inBg">
     </div>
 
-    <div class="sect">Frame</div>
-    <div class="row"><select id="selFormat">
-      <option value="1:1">square 1:1 &nbsp;— social</option>
-      <option value="16:9">desktop 16:9</option>
-      <option value="9:16">phone 9:16</option>
-      <option value="21:9">ultrawide 21:9</option>
-      <option value="4:3">landscape 4:3</option>
-      <option value="3:2">landscape 3:2</option>
-      <option value="5:4">landscape 5:4</option>
-      <option value="4:5">portrait 4:5</option>
-      <option value="3:4">portrait 3:4</option>
-      <option value="2:3">portrait 2:3</option>
-      <option value="2:1">double wide 2:1</option>
-      <option value="1:2">double tall 1:2</option>
-      <option value="custom">custom size…</option>
-    </select></div>
-    <div class="row wrap" id="rowFrameSize">
-      <label>width</label><input type="number" id="inFrameW" min="32" max="8192" step="1">
-      <label>height</label><input type="number" id="inFrameH" min="32" max="8192" step="1">
-    </div>
-    <div class="row" id="rowRes"><label>long edge</label>
+    <div class="sect" id="outSect">Output</div>
+    <div class="row" id="rowRes"><label id="lblRes">long edge</label>
       <select id="selRes">
         <option value="1024">1K (1024 px)</option>
         <option value="2048">2K (2048 px)</option>
@@ -114,6 +151,7 @@
 </aside>
 
 <script src="src/engine.js"></script>
+<script src="src/mandala.js"></script>
 <script src="src/app.js"></script>
 </body>
 </html>

@@ -58,6 +58,10 @@ body.panel-hidden #panel { transform: translateX(-100%); }
   background: #1b1c22;
 }
 #tabs button:disabled { opacity: .45; cursor: default; }
+#mandParams { display: none; }
+body.tab-mandala #mandParams { display: block; }
+body.tab-mandala #genParams { display: none; }
+#mandParams input[type="range"] { flex: 1; }
 #panelBody { overflow-y: auto; padding: 10px 14px 16px; flex: 1; }
 .row { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
 .row.wrap { flex-wrap: wrap; }
@@ -149,11 +153,11 @@ body:not(.panel-hidden) #showBtn { display: none; }
     <h1>Truchet Studio</h1><span class="sub">multi-scale truchet patterns</span>
   </div>
   <nav id="tabs">
-    <button class="active">Generator</button>
+    <button class="active" data-tab="gen">Generator</button>
     <button disabled title="coming soon">Fill</button>
     <button disabled title="coming soon">Photo</button>
     <button disabled title="coming soon">Composer</button>
-    <button disabled title="coming soon">Mandala</button>
+    <button data-tab="mandala">Mandala</button>
   </nav>
   <div id="panelBody">
 
@@ -163,6 +167,7 @@ body:not(.panel-hidden) #showBtn { display: none; }
       <button class="action" id="btnCopyLink" title="copy shareable URL">copy link</button>
     </div>
 
+    <div id="genParams">
     <div class="sect">Tiling</div>
     <div class="row"><select id="selTiling">
       <option value="chk">checkerboard</option>
@@ -175,6 +180,61 @@ body:not(.panel-hidden) #showBtn { display: none; }
       <span id="outN" class="info"></span></div>
     <div class="row wrap" id="rowRand"><label>splits</label><input type="number" id="inSplits" min="1" max="400">
       <label>max depth</label><input type="number" id="inMaxd" min="1" max="10"></div>
+
+    <div class="sect">Frame</div>
+    <div class="row"><select id="selFormat">
+      <option value="1:1">square 1:1 &nbsp;— social</option>
+      <option value="16:9">desktop 16:9</option>
+      <option value="9:16">phone 9:16</option>
+      <option value="21:9">ultrawide 21:9</option>
+      <option value="4:3">landscape 4:3</option>
+      <option value="3:2">landscape 3:2</option>
+      <option value="5:4">landscape 5:4</option>
+      <option value="4:5">portrait 4:5</option>
+      <option value="3:4">portrait 3:4</option>
+      <option value="2:3">portrait 2:3</option>
+      <option value="2:1">double wide 2:1</option>
+      <option value="1:2">double tall 1:2</option>
+      <option value="custom">custom size…</option>
+    </select></div>
+    <div class="row wrap" id="rowFrameSize">
+      <label>width</label><input type="number" id="inFrameW" min="32" max="8192" step="1">
+      <label>height</label><input type="number" id="inFrameH" min="32" max="8192" step="1">
+    </div>
+    </div><!-- /genParams -->
+
+    <div id="mandParams">
+      <div class="sect">Mandala</div>
+      <div class="row"><label>rings</label><input type="range" id="inRings" min="1" max="12" step="1">
+        <span id="outRings" class="info"></span></div>
+      <div class="row"><label>sectors</label><select id="selSectors">
+        <option value="6">6</option><option value="8">8</option>
+        <option value="12">12</option><option value="16">16</option>
+        <option value="20">20</option><option value="24">24</option>
+        <option value="32">32</option><option value="48">48</option>
+      </select></div>
+      <div class="row"><label>symmetry</label><select id="selSym">
+        <option value="free">free random</option>
+        <option value="mirror">mirror (bilateral)</option>
+        <option value="2">rotate ×2</option>
+        <option value="3">rotate ×3</option>
+        <option value="4">rotate ×4</option>
+        <option value="5">rotate ×5</option>
+        <option value="6">rotate ×6</option>
+        <option value="8">rotate ×8</option>
+      </select></div>
+      <div class="row"><label>ring width</label><select id="selRingMode">
+        <option value="auto">grow · near-square cells</option>
+        <option value="even">uniform rings</option>
+      </select></div>
+      <div class="row"><label>invert odd rings</label><input type="checkbox" id="inMInv"></div>
+      <div class="row"><label>center</label><select id="selHub">
+        <option value="disc">filled disc</option>
+        <option value="ring">outline ring</option>
+        <option value="none">open</option>
+      </select></div>
+      <div class="row"><span class="hint">radial Truchet: every ring keeps the same sector count, so arcs cross every seam continuously</span></div>
+    </div>
 
     <div class="sect">Motif</div>
     <div id="motifGrid"></div>
@@ -201,27 +261,8 @@ body:not(.panel-hidden) #showBtn { display: none; }
       <label>ground</label><input type="color" id="inBg">
     </div>
 
-    <div class="sect">Frame</div>
-    <div class="row"><select id="selFormat">
-      <option value="1:1">square 1:1 &nbsp;— social</option>
-      <option value="16:9">desktop 16:9</option>
-      <option value="9:16">phone 9:16</option>
-      <option value="21:9">ultrawide 21:9</option>
-      <option value="4:3">landscape 4:3</option>
-      <option value="3:2">landscape 3:2</option>
-      <option value="5:4">landscape 5:4</option>
-      <option value="4:5">portrait 4:5</option>
-      <option value="3:4">portrait 3:4</option>
-      <option value="2:3">portrait 2:3</option>
-      <option value="2:1">double wide 2:1</option>
-      <option value="1:2">double tall 1:2</option>
-      <option value="custom">custom size…</option>
-    </select></div>
-    <div class="row wrap" id="rowFrameSize">
-      <label>width</label><input type="number" id="inFrameW" min="32" max="8192" step="1">
-      <label>height</label><input type="number" id="inFrameH" min="32" max="8192" step="1">
-    </div>
-    <div class="row" id="rowRes"><label>long edge</label>
+    <div class="sect" id="outSect">Output</div>
+    <div class="row" id="rowRes"><label id="lblRes">long edge</label>
       <select id="selRes">
         <option value="1024">1K (1024 px)</option>
         <option value="2048">2K (2048 px)</option>
@@ -714,6 +755,236 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
 
 </script>
 <script>
+/* mandala.js — radial ("mandala") Truchet on top of the Generator engine.
+ *
+ * A mandala is a set of concentric rings, each ring split into the same number
+ * of sectors. Every cell is one of Carlson's connection tiles, but laid out in
+ * polar space instead of a Cartesian grid: the tile's unit square is warped by
+ *   r = r0 + v * (r1 - r0),   theta = th0 + u * dTheta
+ * so the tile's S/N edges become the ring boundaries and its E/W edges become
+ * the sector seams. Circuits are the engine's own (same connection sets, same
+ * arc geometry, same circuit polygons) — only the final points are remapped,
+ * which keeps seams continuous: two neighbouring cells map their shared edge
+ * with the identical parametrization.
+ *
+ * Ring radii grow geometrically with factor exp(dTheta).  With the exponential
+ * (log-polar) map below, each cell's radial and angular local scales are equal
+ * (the map is conformal), so Carlson's near-tangent arc pairs stay near-tangent
+ * instead of being pulled apart into white cracks.  Ring i's outer edge is
+ * exactly ring i+1's inner edge, and both sides agree to first order there.
+ */
+(function () {
+  const T = (typeof window !== 'undefined')
+    ? window.Truchet
+    : require('./engine.js');
+
+  const DEG = Math.PI / 180;
+
+  /* ---------- connection-set helpers ---------- */
+  function setKey(conns) {
+    return conns.map(([a, b]) => (a < b ? a + '-' + b : b + '-' + a))
+      .sort().join(',');
+  }
+  const SET_INDEX = new Map();
+  T.CONNECTION_SETS.forEach((c, i) => SET_INDEX.set(setKey(c), i + 1));
+
+  const POINT_NODE = new Map();
+  const pkey = (p) => p[0].toFixed(9) + ',' + p[1].toFixed(9);
+  for (let n = 1; n <= T.NP; n++) POINT_NODE.set(pkey(T.PT[n]), n);
+
+  /* Reflect a tile's connection set in x (u -> 1-u, i.e. flip the angular
+   * direction of a cell). Every one of the 24 sets is a perfect matching of
+   * the 4 odd against the 4 even boundary points, and a reflection maps odd
+   * points to even ones, so the result is always one of the 24. */
+  function mirrorSetX(connIdx) {
+    const conns = T.CONNECTION_SETS[connIdx - 1];
+    const mapped = conns.map(([a, b]) => {
+      const pa = T.PT[a], pb = T.PT[b];
+      const qa = POINT_NODE.get(pkey([1 - pa[0], pa[1]]));
+      const qb = POINT_NODE.get(pkey([1 - pb[0], pb[1]]));
+      return qa < qb ? [qa, qb] : [qb, qa];
+    });
+    const idx = SET_INDEX.get(setKey(mapped));
+    return idx === undefined ? connIdx : idx;
+  }
+
+  /* ---------- model ---------- */
+  // opts: rings, sectors, sym ('free'|'mirror'|number k), ringMode ('auto'|'even'),
+  //       seed, pool (array of motif names)
+  function build(opts) {
+    const rings = Math.max(1, Math.round(opts.rings));
+    const sectors = Math.max(3, Math.round(opts.sectors));
+    const ringMode = opts.ringMode === 'even' ? 'even' : 'auto';
+    const sym = opts.sym === undefined ? 'free' : opts.sym;
+    const pool = (opts.pool && opts.pool.length) ? opts.pool : ['/'];
+    const dth = 2 * Math.PI / sectors;
+
+    // radii: ring i spans radii[i] .. radii[i+1]
+    // 'auto' grows by exp(dTheta) so that the exponential warp below is
+    // conformal and the rings tile with no gap; 'even' keeps uniform thickness
+    // (conformal only for the first ring, stretched for the rest).
+    const radii = [1];
+    if (ringMode === 'auto') {
+      const g = Math.exp(dth);
+      for (let i = 0; i < rings; i++) radii.push(radii[i] * g);
+    } else {
+      for (let i = 1; i <= rings; i++) radii.push(1 + i);
+    }
+    let maxDr = 0;
+    for (let i = 0; i < rings; i++) maxDr = Math.max(maxDr, radii[i + 1] - radii[i]);
+
+    // rotational symmetry: k divides sectors -> only sectors/k cells are drawn
+    let rotK = 0;
+    if (typeof sym === 'number' && sym > 1 && sectors % sym === 0) rotK = sym;
+    const mirror = sym === 'mirror' && sectors % 2 === 0;
+    const wedge = rotK ? sectors / rotK : (mirror ? sectors / 2 : sectors);
+
+    const rnd = T.mulberry32(T.seedFromString(
+      String(opts.seed || '') + '\u0001mandala:' + sectors + ':' + rings));
+    const ringsOut = [];
+    for (let i = 0; i < rings; i++) {
+      const half = [];
+      for (let j = 0; j < wedge; j++) {
+        half.push(T.connIdxByName(pool[Math.floor(rnd() * pool.length)]));
+      }
+      const cells = [];
+      for (let j = 0; j < sectors; j++) {
+        let idx;
+        if (mirror && j >= wedge) idx = mirrorSetX(half[sectors - 1 - j]);
+        else if (rotK) idx = half[j % wedge];
+        else idx = half[j];
+        cells.push({
+          ring: i, sector: j, connIdx: idx,
+          r0: radii[i], r1: radii[i + 1], th0: j * dth
+        });
+      }
+      ringsOut.push(cells);
+    }
+    return {
+      cells: ringsOut, rings, sectors, dth, radii, maxDr,
+      rInner: radii[0], rOuter: radii[rings], rotK, mirror
+    };
+  }
+
+  /* ---------- warped rendering ---------- */
+  /* Parameter-space polyline -> polar polyline, subdivided so no single
+   * segment sweeps more than MAX_SWEEP of angle (a straight parameter segment
+   * is only a chord of its warped image).
+   * `state` is shared across all segments of one circuit: only the very first
+   * point gets a moveTo. Otherwise every segment becomes its own open subpath
+   * and the circuit fills as a chain of thin slivers instead of a band. */
+  const MAX_SWEEP = 1.2 * DEG;
+  function warpStroke(ctx, pts, cell, dth, cx, cy, s, state) {
+    const project = (x, y) => {
+      // log-polar map: r = r0 * (r1/r0)^v, theta = th0 + u * dTheta.
+      // Local scale is r*dTheta in both directions when r1 = r0 * exp(dTheta),
+      // i.e. the map is a similarity at every point -> angles are preserved.
+      const r = cell.r0 * Math.pow(cell.r1 / cell.r0, y);
+      const th = cell.th0 + x * dth;
+      return [cx + s * r * Math.cos(th), cy - s * r * Math.sin(th)];
+    };
+    for (let k = 0; k < pts.length; k++) {
+      const p = pts[k];
+      if (!state.started) {                 // the circuit's single start point
+        const q0 = project(p[0], p[1]);
+        ctx.moveTo(q0[0], q0[1]);
+        state.started = true;
+        continue;
+      }
+      const prev = k > 0 ? pts[k - 1] : pts[pts.length - 1];
+      const dthSeg = (p[0] - prev[0]) * dth;
+      const steps = Math.max(1, Math.ceil(Math.abs(dthSeg) / MAX_SWEEP));
+      for (let t = 1; t <= steps; t++) {
+        const u = prev[0] + (p[0] - prev[0]) * t / steps;
+        const v = prev[1] + (p[1] - prev[1]) * t / steps;
+        const q = project(u, v);
+        ctx.lineTo(q[0], q[1]);
+      }
+    }
+  }
+
+  /* A warped circuit is also stroked with a width proportional to the local
+   * cell size.  Carlson's circuit polygons contain near-osculating arc pairs
+   * (bands whose edges touch with matched curvature); the polar warp opens
+   * those contacts into hairline lenses, which read as cracks.  Stroking the
+   * same path in its own fill colour fattens the band just enough to close
+   * them without changing the silhouette. */
+  function cellStrokeWidth(cell, dth, s) {
+    const rMid = (cell.r0 + cell.r1) / 2;
+    return Math.max(0.6, s * rMid * dth * 0.045);
+  }
+
+  function drawCell(ctx, cell, dth, cx, cy, s, topColor, underColor) {
+    const def = T.getTile(cell.connIdx);
+    // Same pass order as the Generator: under-colored circuits first, then the
+    // circuits that sit on top (Carlson's SquareArcTile order).
+    for (const pass of [true, false]) {
+      for (const { whiteFirst, segs } of def) {
+        if (whiteFirst !== pass) continue;
+        const color = pass ? underColor : topColor;
+        ctx.beginPath();
+        const state = { started: false };
+        for (const seg of segs) {
+          warpStroke(ctx, T.sampleArc(seg), cell, dth, cx, cy, s, state);
+        }
+        ctx.closePath();
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.lineWidth = cellStrokeWidth(cell, dth, s);
+        ctx.strokeStyle = color;
+        ctx.stroke();
+      }
+    }
+  }
+
+  /* opts: w, h, palette (array or fn(ringIndex)), invert (bool), hub
+   * ('none'|'disc'|'ring'), pad (fraction of the diameter) */
+  function render(ctx, model, opts) {
+    const w = opts.w, h = opts.h;
+    const pad = opts.pad || 0;
+    const wing = model.maxDr / 3;                 // wings reach 1/3 of a cell
+    const fitR = model.rOuter + wing;
+    const s = (Math.min(w, h) / 2) * (1 - pad) / fitR;
+    const cx = w / 2, cy = h / 2;
+
+    // outer rings first: inner (smaller) cells overpaint their neighbours' wings
+    for (let i = model.rings - 1; i >= 0; i--) {
+      const pal = (typeof opts.palette === 'function')
+        ? opts.palette(i) : opts.palette;
+      const flip = !!opts.invert && (i % 2 === 1);
+      for (const cell of model.cells[i]) {
+        drawCell(ctx, cell, model.dth, cx, cy, s,
+          flip ? pal[1] : pal[0], flip ? pal[0] : pal[1]);
+      }
+    }
+
+    const hub = opts.hub || 'none';
+    if (hub !== 'none') {
+      const pal = (typeof opts.palette === 'function')
+        ? opts.palette(0) : opts.palette;
+      ctx.fillStyle = pal[0];
+      ctx.beginPath();
+      const rHub = hub === 'ring'
+        ? model.rInner * s : model.rInner * s * 0.55;
+      ctx.arc(cx, cy, rHub, 0, Math.PI * 2);
+      if (hub === 'ring') {
+        ctx.lineWidth = Math.max(1, model.maxDr * s * 0.12);
+        ctx.strokeStyle = pal[0];
+        ctx.stroke();
+      } else {
+        ctx.fill();
+      }
+    }
+    return s;
+  }
+
+  const api = { build, render, mirrorSetX, setKey };
+  if (typeof module !== 'undefined') module.exports = api;
+  if (typeof window !== 'undefined') window.TruchetMandala = api;
+})();
+
+</script>
+<script>
 /* Truchet Studio — Generator tab (Phase 1d)
  * Single faithful engine (src/engine.js); this file is UI only. */
 (function () {
@@ -732,7 +1003,16 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     pad: 2,             // margin percent
     format: '1:1',      // frame format key, or 'custom'
     res: 2048,          // long edge in px when a preset format is used
-    fw: 3840, fh: 2160  // explicit frame size when format === 'custom'
+    fw: 3840, fh: 2160, // explicit frame size when format === 'custom'
+    /* Mandala tab */
+    tab: 'gen',           // 'gen' | 'mandala'
+    rings: 5,             // concentric rings
+    sectors: 20,          // sectors per ring (same count in every ring, so
+                          // neighbouring cells share connection points)
+    sym: 'free',          // 'free' | 'mirror' | rotation order as a number
+    ringMode: 'auto',     // 'auto' geometric growth | 'even' uniform rings
+    minv: true,           // invert the motif on odd rings
+    hub: 'disc'           // 'disc' | 'ring' | 'none'
   };
   let S = Object.assign({}, DEFAULTS);
 
@@ -757,7 +1037,9 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
   const HASH_KEYS = {
     tiling: 't', n: 'n', splits: 'sp',
     maxd: 'md', seed: 'sd', motifs: 'm', pal: 'p', c1: 'c1', c2: 'c2',
-    bg: 'bg', pad: 'pd', format: 'F', res: 'rs', fw: 'fw', fh: 'fh'
+    bg: 'bg', pad: 'pd', format: 'F', res: 'rs', fw: 'fw', fh: 'fh',
+    tab: 'tab', rings: 'rg', sectors: 'sc', sym: 'sy',
+    ringMode: 'rw', minv: 'mi', hub: 'hb'
   };
   function writeHash() {
     const p = new URLSearchParams();
@@ -767,11 +1049,14 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     location.hash = p.toString();
   }
   function readHash() {
-    const p = new URLSearchParams(location.hash.slice(1));
+    // A literal '+' in a hash decodes as a space, which would silently kill the
+    // '+' motif (writeHash percent-encodes it, typed or old links do not).
+    const p = new URLSearchParams(location.hash.slice(1).replace(/\+/g, '%2B'));
     for (const [k, h] of Object.entries(HASH_KEYS)) {
       if (p.has(h)) {
         const v = p.get(h);
         if (Array.isArray(DEFAULTS[k])) S[k] = v.split(',').filter(Boolean);
+        else if (typeof DEFAULTS[k] === 'boolean') S[k] = (v === '1' || v === 'true');
         else S[k] = (k in DEFAULTS && typeof DEFAULTS[k] === 'number') ? +v : v;
       }
     }
@@ -895,6 +1180,44 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     return (depth) => [T.lerpColor(S.c1, S.c2, depth / maxD), S.bg];
   }
 
+  /* ================= mandala tab ================= */
+  const M = window.TruchetMandala;
+  function mandalaSym() {                  // 'free' | 'mirror' | integer order
+    const v = String(S.sym);
+    if (v === 'free' || v === 'mirror') return v;
+    const k = parseInt(v, 10);
+    return Number.isFinite(k) ? k : 'free';
+  }
+  function mandalaPx() {                   // mandalas are square frames
+    const res = clamp(Math.round(S.res), 64, 8192);
+    return [res, res];
+  }
+  function mandalaModel() {
+    return M.build({
+      rings: clamp(Math.round(S.rings), 1, 16),
+      sectors: clamp(Math.round(S.sectors), 3, 64),
+      sym: mandalaSym(), ringMode: S.ringMode,
+      seed: S.seed, pool: motifPool()
+    });
+  }
+  function buildMandalaPalette(model) {
+    if (S.pal !== 'custom') return T.PALETTES[S.pal] || T.PALETTES.bw;
+    const maxD = Math.max(1, model.rings - 1);   // the ramp runs ring 0 -> outer ring
+    return (ring) => [T.lerpColor(S.c1, S.c2, ring / maxD), S.bg];
+  }
+  function drawMandala(c, w, h) {
+    const cx = c.getContext('2d');
+    const model = mandalaModel();
+    const pal = buildMandalaPalette(model);
+    cx.setTransform(1, 0, 0, 1, 0, 0);
+    cx.fillStyle = (S.pal === 'custom') ? S.bg : pal[1];
+    cx.fillRect(0, 0, w, h);
+    M.render(cx, model, {
+      w, h, palette: pal, invert: S.minv, hub: S.hub, pad: S.pad / 100
+    });
+    return model;
+  }
+
   /* ================= main view ================= */
   const canvas = document.getElementById('mainCanvas');
   const ctx = canvas.getContext('2d');
@@ -931,16 +1254,24 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     });
   }
   function updateFrameInfo() {
-    const L = lattice(), [fw, fh] = framePx();
     const el = document.getElementById('frameInfo');
     if (!el) return;
+    if (S.tab === 'mandala') {
+      const [w, h] = mandalaPx();
+      const sym = mandalaSym();
+      const symNote = sym === 'free' ? '' : (sym === 'mirror' ? ' · mirror' : ` · rotate ×${sym}`);
+      el.textContent = `${S.rings} rings · ${S.sectors} sectors${symNote} · ${w} × ${h} px`;
+      return;
+    }
+    const L = lattice(), [fw, fh] = framePx();
     const unit = (S.tiling === 'sur' || S.tiling === 'off') ? 'units' : 'tiles';
     const step = L.t > 1 ? ' · ×' + L.t : '';
     el.textContent = `${L.cols} × ${L.rows} ${unit} · ${fw} × ${fh} px${step}`;
   }
   function renderMain() {
     const dpr = window.devicePixelRatio || 1;
-    const [fw, fh] = framePx();
+    const square = S.tab === 'mandala';
+    const [fw, fh] = square ? mandalaPx() : framePx();
     const ar = fw / fh;
     /* Preview = the export frame, scaled to fit the visible stage, so what you
      * see is what the PNG will be (same lattice, same crop-free fill). */
@@ -959,7 +1290,8 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
       lastDpr = dpr;
       paintPreviews();
     }
-    drawScene(canvas, buildTiling(), w, h);
+    if (square) drawMandala(canvas, w, h);
+    else drawScene(canvas, buildTiling(), w, h);
     updateFrameInfo();
   }
 
@@ -967,6 +1299,34 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
   function sanitizeMotif(m) {
     return ({ '/': 'sl', '\\': 'bs', '|': 'vb', '+': 'pl',
       '.': 'd', '-': 'mi' })[m] || m;
+  }
+  function motifPart(isMix, pool) {
+    return isMix ? 'mix' : pool.map(sanitizeMotif).join('-');
+  }
+  function mandalaExportName(w, h) {
+    const pool = motifPool();
+    const isMix = pool.length === T.MOTIF_NAMES.length &&
+      pool.every((m, i) => m === T.MOTIF_NAMES[i]);
+    const sym = mandalaSym();
+    const symPart = sym === 'free' ? 'free' : (sym === 'mirror' ? 'mirror' : 'rot' + sym);
+    return 'truchet_mandala_r' + S.rings + 's' + S.sectors + '_' + S.seed +
+      '_' + symPart + '_m' + motifPart(isMix, pool) +
+      '_p' + (S.pal === 'custom' ? 'ramp' : S.pal) + '_' + w + 'x' + h + '.png';
+  }
+  function exportMandalaPNG() {
+    const [w, h] = mandalaPx();
+    const off = document.createElement('canvas');
+    off.width = w; off.height = h;
+    drawMandala(off, w, h);
+    const name = mandalaExportName(w, h);
+    off.toBlob((blob) => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    }, 'image/png');
+    document.getElementById('fileName').textContent = name;
   }
   function exportName(w, h) {
     const L = lattice();
@@ -980,6 +1340,7 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
       '_p' + pal + '_' + w + 'x' + h + '.png';
   }
   function exportPNG() {
+    if (S.tab === 'mandala') { exportMandalaPNG(); return; }
     const [w, h] = framePx();
     const off = document.createElement('canvas');
     off.width = w; off.height = h;
@@ -1001,7 +1362,9 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     tiling: 'selTiling', n: 'inN', format: 'selFormat',
     fw: 'inFrameW', fh: 'inFrameH', res: 'selRes',
     splits: 'inSplits', maxd: 'inMaxd', seed: 'inSeed', pal: 'selPal',
-    c1: 'inC1', c2: 'inC2', bg: 'inBg', pad: 'inPad'
+    c1: 'inC1', c2: 'inC2', bg: 'inBg', pad: 'inPad',
+    rings: 'inRings', sectors: 'selSectors', sym: 'selSym',
+    ringMode: 'selRingMode', hub: 'selHub'
   };
   function pushToInputs() {
     $('selTiling').value = S.tiling;
@@ -1014,12 +1377,20 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     $('inSeed').value = S.seed; $('selPal').value = S.pal;
     $('inC1').value = S.c1; $('inC2').value = S.c2; $('inBg').value = S.bg;
     $('inPad').value = S.pad; $('outPad').textContent = S.pad + '%';
+    $('inRings').value = S.rings; $('outRings').textContent = S.rings;
+    $('selSectors').value = String(S.sectors);
+    $('selSym').value = String(S.sym);
+    $('selRingMode').value = S.ringMode;
+    $('inMInv').checked = !!S.minv;
+    $('selHub').value = S.hub;
   }
   function refreshParamVisibility() {
     const show = (id, on) => $(id).style.display = on ? '' : 'none';
     show('rowN', true);
     show('rowFrameSize', S.format === 'custom');
-    show('rowRes', S.format !== 'custom');
+    show('rowRes', S.tab === 'mandala' ? true : S.format !== 'custom');
+    $('lblRes').textContent = S.tab === 'mandala' ? 'side' : 'long edge';
+    $('outRings').textContent = S.rings;
     show('rowRand', S.tiling === 'rand');
     show('rowCustomPal', S.pal === 'custom');
     /* The density range depends on the frame: a 1:1 frame can carry far more
@@ -1031,6 +1402,10 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     $('inN').value = S.n;
     $('outN').textContent = '×' + lattice().t;
   }
+  $('inMInv').addEventListener('input', () => {
+    S.minv = !!$('inMInv').checked;
+    onChange();
+  });
   function onChange() {
     writeHash(); refreshParamVisibility(); renderMain(); updateMotifSel();
   }
@@ -1063,6 +1438,23 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
 
   /* export controls */
   $('btnExport').addEventListener('click', () => exportPNG());
+
+  /* tabs: Generator and Mandala share the seed, motif pool, palette and export */
+  function syncTabs() {
+    document.querySelectorAll('#tabs button[data-tab]').forEach((b) => {
+      b.classList.toggle('active', b.dataset.tab === S.tab);
+    });
+    document.body.classList.toggle('tab-mandala', S.tab === 'mandala');
+  }
+  document.querySelectorAll('#tabs button[data-tab]').forEach((b) => {
+    b.addEventListener('click', () => {
+      if (S.tab === b.dataset.tab) return;
+      S.tab = b.dataset.tab;
+      syncTabs();
+      writeHash();
+      renderMain();
+    });
+  });
 
   /* motif picker: the 15 tiles from Carlson's motifs figure, plus a mix cell */
   const grid = $('motifGrid');
@@ -1149,6 +1541,9 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
   S.motifs = (S.motifs || []).filter(
     (m) => m === 'mix' || T.MOTIF_NAMES.includes(m));
   if (!S.motifs.length) S.motifs = ['/'];
+  if (S.tab !== 'mandala') S.tab = 'gen';
+  if (!M) S.tab = 'gen';
+  syncTabs();
   pushToInputs();
   buildMotifGrid();
   refreshParamVisibility();

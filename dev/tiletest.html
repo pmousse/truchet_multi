@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{display:block}</style></head>
+<body>
+<canvas id="cv"></canvas>
+<script src="../src/engine.js"></script>
+<script>
+const q = (k, d) => (new URLSearchParams(location.hash.slice(1)).get(k)) ?? d;
+const T = window.Truchet;
+const cv = document.getElementById('cv');
+const W = +q('W', 600), H = +q('H', 600);
+cv.width = W; cv.height = H;
+const ctx = cv.getContext('2d');
+const pal = T.PALETTES[q('p', 'bw')] || T.PALETTES.bw;
+ctx.fillStyle = pal[1]; ctx.fillRect(0, 0, W, H);
+const N = +q('g', 2);
+const tiles = [];
+for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) tiles.push({ x: c, y: r, s: 1 });
+T.fitTransform(ctx, tiles, W, H, +q('pd', 0.02));
+T.renderTiling(ctx, tiles, {
+  pickTile: () => T.connIdxByName(q('m', '/')),
+  palette: pal
+});
+</script>
+</body>
+</html>

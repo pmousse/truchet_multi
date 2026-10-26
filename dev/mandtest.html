@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>mandala test</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<script src="../src/engine.js"></script>
+<script src="../src/mandala.js"></script>
+<script>
+/* Bare harness for headless QA: renders a mandala with no UI chrome at an
+   exact pixel size so a Python oracle can compare it sample-for-sample.
+   Hash params mirror the app's: rg, sc, sy, rw, m, sd, mi, hb, pd, W, H. */
+const q = (k, d) => {
+  // protect literal '+' values (the '+' motif): a raw '+' would decode as space
+  const m = new URLSearchParams(location.hash.slice(1).replace(/\+/g, '%2B'));
+  return m.has(k) ? m.get(k) : d;
+};
+const T = window.Truchet, M = window.TruchetMandala;
+const W = +q('W', 600), H = +q('H', 600);
+const sy = q('sy', 'free');
+const pool = q('m', 'mix');
+const model = M.build({
+  rings: +q('rg', 4),
+  sectors: +q('sc', 24),
+  sym: (sy === 'free' || sy === 'mirror') ? sy : parseInt(sy, 10),
+  ringMode: q('rw', 'auto'),
+  seed: q('sd', 'k7x2m9'),
+  pool: pool === 'mix' ? T.MOTIF_NAMES : pool.split(',').filter(Boolean)
+});
+const cv = document.getElementById('cv');
+cv.width = W; cv.height = H;
+const pal = T.PALETTES[q('p', 'bw')] || T.PALETTES.bw;
+const ctx2 = cv.getContext('2d');
+ctx2.fillStyle = pal[1];            // ground, exactly as app.js drawMandala does
+ctx2.fillRect(0, 0, W, H);
+M.render(ctx2, model, {
+  w: W, h: H, palette: pal,
+  invert: q('mi', '1') === '1',
+  hub: q('hb', 'disc'),
+  pad: (+q('pd', '2')) / 100
+});
+document.title = JSON.stringify({ rings: model.rings, sectors: model.sectors,
+  radii: model.radii });
+</script>
+</body>
+</html>
