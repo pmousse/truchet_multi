@@ -277,6 +277,57 @@ typed/old links and hand-built QA queries were affected. `readHash()` in
   `dist/truchet.html` carries it too. Nothing from Carlson's files is inlined by
   `build.js` — it inlines `src/style.css`, `src/engine.js` and `src/app.js` only.
 
+## Rendering performance (measured 2026-10, was never measured before)
+
+Harness: `dev/bench.html` (drives `src/engine.js` through exactly the app's
+paths: lattice -> buildTiling -> pickTile -> renderTiling, stage timings, paint
+= median of 3). Run it with:
+
+```
+chrome --headless=new --disable-gpu --no-sandbox --dump-dom "file:///D:/_truchet/dev/bench.html"
+```
+
+and read the `<pre id="out">` block. Numbers below are this machine, headless.
+
+Tiling generation and motif picking are NOT the bottleneck (<= 45 ms even at
+14k tiles). All the cost was in `traceTilePolygons` re-tessellating arcs with
+`sampleArc` for every circuit of every tile on every frame - which is why paint
+time scaled with tile count and almost not at all with canvas resolution.
+
+Fix (committed): `getTile()` now also caches each circuit tessellated once in
+unit-tile space as a **Path2D** (one path per circuit per colour pass), and
+`traceTilePolygons` replays them under the tile transform.
+
+| case | tiles | paint before | paint after |
+|---|---|---|---|
+| checkerboard 16:9 x1 @ 3840x2160 | 360 | 177.2 ms | 1.4 ms |
+| checkerboard 16:9 x2 @ 4K | 1440 | 725.5 ms | 9.1 ms |
+| checkerboard 16:9 x4 @ 4K | 5760 | 3203.4 ms | 672.6 ms |
+| random 16:9 x4 @ 4K | 4377 | 2404.9 ms | 660.6 ms |
+| surround 16:9 x4 @ 4K | 14125 | 7400.2 ms | 1700.8 ms |
+| checkerboard 1:1 x16 @ 4K | 640 | 252.6 ms | 1.8 ms |
+| preview 1280x720, 16:9 x4, ONE full redraw | 5760 | 2653.8 ms | 362.5 ms |
+| preview 1280x720, 16:9 x1, one full redraw | 360 | 141.3 ms | 1.7 ms |
+
+Output is pixel-identical: the same 16:9 x4 screenshot before and after the
+change hashes to the same MD5 (`55eee13c43bc2f804291a21b3887a053`).
+
+Invariants to keep if this is touched again:
+- **One Path2D per circuit, per colour pass - never merge a pass into a single
+  path.** Carlson composites same-colour circuits opaquely; one merged nonzero
+  path would cancel oppositely-wound overlaps into white slits on the 8
+  self-overlapping tiles.
+- Paths are built in unit-tile space and rely on the CTM (`translate`, `scale`)
+  - do not bake tile position into them.
+- `Path2D` does not exist in Node, so `buildCircuitPaths` returns null and
+  `traceTilePolygons` keeps its original sampling path as the fallback; the
+  Node gold tests exercise the fallback, the browser exercises the cache.
+
+Known accounting wart (next fix): the lattice is cells, the engine emits more
+tiles than cells - checkerboard 64x36 cells = 5760 tiles, surround = 14125.
+`MAX_LATTICE_TILES = 5000` therefore caps cells, not tiles, and the panel says
+"64 x 36 tiles" when 5760 are actually drawn.
+
 ## User preferences
 Faithful port, not stylized. Single-file HTML, vanilla JS, no deps. Dark
 chrome, gallery-first canvas. Credit Carlson (Bridges 2018). Export PNG

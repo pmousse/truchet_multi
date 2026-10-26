@@ -236,6 +236,35 @@ const Truchet = (function () {
 
   /* ---------- tile cache ---------- */
   const tileCache = new Map();
+  function buildCircuitPaths(tile) {
+    /* Tessellate every circuit ONCE, in unit-tile space, and keep it as a
+     * Path2D. A frame then costs fill() calls instead of re-running the arc
+     * sampling for every tile: the same 15 motifs repeat thousands of times,
+     * so this is pure repetition. One Path2D per circuit (not one merged
+     * path) on purpose: Carlson's renderer composites same-colour circuits
+     * opaquely, and a merged nonzero path would cancel oppositely-wound
+     * overlaps into white slits. Path2D honours the current transform, so
+     * each tile just sets translate/scale and fills the cached shapes. */
+    if (typeof Path2D === 'undefined') return null;   // Node (tests) -> traceTilePolygons falls back
+    const paths = { under: [], top: [] };
+    for (const pass of [true, false]) {
+      for (const { whiteFirst, segs } of tile) {
+        if (whiteFirst !== pass) continue;
+        const p = new Path2D();
+        let started = false;
+        for (const s of segs) {
+          const pts = sampleArc(s);
+          for (let i = started ? 1 : 0; i < pts.length; i++) {
+            if (!started) { p.moveTo(pts[i][0], pts[i][1]); started = true; }
+            else p.lineTo(pts[i][0], pts[i][1]);
+          }
+        }
+        p.closePath();
+        (pass ? paths.under : paths.top).push(p);
+      }
+    }
+    return paths;
+  }
   function getTile(connIdx) {
     if (tileCache.has(connIdx)) return tileCache.get(connIdx);
     const circuits = traceCircuits(CONNECTION_SETS[connIdx - 1]);
@@ -246,6 +275,7 @@ const Truchet = (function () {
       whiteFirst: (c[0] % 2) === 1,
       segs: circuitSegments(c)
     }));
+    tile.paths = buildCircuitPaths(tile);
     tileCache.set(connIdx, tile);
     return tile;
   }
@@ -387,6 +417,17 @@ const Truchet = (function () {
   function traceTilePolygons(ctx, tileDef, colTop, colUnder) {
     // Carlson's draw order: ALL white circuits first (under), then ALL
     // black circuits (on top) -- see SquareArcTile in the WL source.
+    if (tileDef.paths) {                     // cached unit-space Path2D shapes
+      for (const pass of [true, false]) {
+        ctx.fillStyle = pass ? colUnder : colTop;
+        for (const p of (pass ? tileDef.paths.under : tileDef.paths.top)) {
+          // Nonzero winding fill (canvas default), matching Carlson's opaque
+          // polygon composition; even-odd would open white slits.
+          ctx.fill(p);
+        }
+      }
+      return;
+    }
     for (const pass of [true, false]) {
       for (const { whiteFirst, segs } of tileDef) {
         if (whiteFirst !== pass) continue;
