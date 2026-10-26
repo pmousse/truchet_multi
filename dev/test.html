@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Truchet Studio — engine test bench</title>
+<style>
+  body { margin:0; background:#1b1b1f; color:#ddd; font:13px/1.4 system-ui; }
+  h2 { margin:18px 18px 4px; font-weight:600; }
+  p.note { margin:0 18px 8px; color:#999; }
+  canvas { display:block; margin:0 18px; background:#fff; }
+</style>
+</head>
+<body>
+<h2>1. All 24 named tiles (order = Carlson enumeration)</h2>
+<p class="note">Compare against ref_render_tiles.png (Python gold render).</p>
+<canvas id="c_tiles" width="760" height="1440"></canvas>
+
+<h2>2. CheckerboardTiling[4] with "/" motif — multi-scale</h2>
+<p class="note">Compare against ref_render_checker_slash.png.</p>
+<canvas id="c_checker" width="760" height="760"></canvas>
+
+<h2>3. RandomSquareSubdivisionTiling (seed k7x2m9, 12 splits)</h2>
+<canvas id="c_rand" width="760" height="760"></canvas>
+
+<h2>4. SurroundTiling[3] with "/" motif</h2>
+<canvas id="c_surround" width="760" height="760"></canvas>
+
+<script src="../src/engine.js"></script>
+<script>
+'use strict';
+const canvasTiles = () => {
+  const ctx = document.getElementById('c_tiles').getContext('2d');
+  const names = Truchet.TILE_NAMES;
+  const cell = 170, pad = 8, cols = 4;
+  const rows = Math.ceil(names.length / cols);
+  for (let k = 0; k < names.length; k++) {
+    const name = names[k];
+    const idx = Truchet.connIdxByName(name);
+    const x0 = pad + (k % cols) * (cell + pad);
+    const y0 = pad + Math.floor(k / cols) * (cell + pad);
+    ctx.save();
+    ctx.translate(x0, y0 + cell);
+    ctx.scale(cell, -cell);            // math y-up
+    Truchet.renderTiling(ctx, [{ x: 0, y: 0, s: 1 }], {
+      pickTile: () => idx,
+      palette: Truchet.PALETTES.bw
+    });
+    ctx.restore();
+    ctx.strokeStyle = '#bbb';
+    ctx.strokeRect(x0, y0, cell, cell);
+    ctx.fillStyle = '#999';
+    ctx.fillText(name, x0 + 4, y0 + cell - 4);
+  }
+};
+
+const draw = (id, tiles, pickTile, palette) => {
+  const cvs = document.getElementById(id);
+  const ctx = cvs.getContext('2d');
+  Truchet.fitTransform(ctx, tiles, cvs.width, cvs.height, 0.02);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(-1e5, -1e5, 2e5, 2e5);
+  Truchet.renderTiling(ctx, tiles, { pickTile, palette });
+};
+
+canvasTiles();
+draw('c_checker', Truchet.checkerboardTiling(4),
+  () => Truchet.connIdxByName('/'), Truchet.PALETTES.bw);
+{
+  const rnd = Truchet.mulberry32(Truchet.seedFromString('k7x2m9'));
+  draw('c_rand', Truchet.randomSubdivision(rnd, 12),
+    (d) => 1 + Math.floor(rnd() * 24), Truchet.PALETTES.bw);
+}
+draw('c_surround', Truchet.surroundTiling(3),
+  () => Truchet.connIdxByName('/'), Truchet.PALETTES.bw);
+</script>
+</body>
+</html>

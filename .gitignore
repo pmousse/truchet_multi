@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+dev/cmp_*.png
+crop_*.png
+tmp/
