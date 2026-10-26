@@ -24,7 +24,7 @@ def read_png(path):
         if typ == b'IHDR':
             w, h, bitdepth, color_type, comp, filt, interlace = struct.unpack('>IIBBBBB', chunk)
             assert interlace == 0, 'interlaced not supported'
-            assert bitdepth in (8, 16), f'bitdepth {bitdepth} not supported'
+            assert bitdepth in (1, 2, 4, 8, 16), f'bitdepth {bitdepth} not supported'
             bd = bitdepth
         elif typ == b'PLTE':
             palette = chunk
@@ -34,6 +34,61 @@ def read_png(path):
             break
     raw = zlib.decompress(idat)
     channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[color_type]
+    if bitdepth < 8:
+        # sub-byte palette/gray: decode at bit level with spec filtering
+        nsamp = w * channels
+        bppb = max(1, (channels * bitdepth + 7) // 8)  # filter bpp in bytes
+        stride_bits = nsamp * bitdepth
+        out_bits = bytearray((stride_bits + 7) // 8 * h)
+
+        def getbit(buf, i):
+            return (buf[i >> 3] >> (7 - (i & 7))) & 1
+
+        def setbit(buf, i, v):
+            if v:
+                buf[i >> 3] |= 1 << (7 - (i & 7))
+        # filter bit-level: a = bit bpp*bitdepth back, b = same bit prev row
+        abits = channels * bitdepth
+        prev_bits = bytearray((stride_bits + 7) // 8)
+        rpos = 0
+        for y in range(h):
+            # decode the row bytes first, then apply byte filters assuming
+            # filter bytes are per byte of the packed row
+            f = raw[rpos]; rpos += 1
+            stride_b = (stride_bits + 7) // 8
+            line = raw[rpos:rpos + stride_b]; rpos += stride_b
+            row = bytearray(stride_b)
+            for i in range(stride_b):
+                a = row[i - bppb] if i >= bppb else 0
+                b = prev_bits[i]
+                c = prev_bits[i - bppb] if i >= bppb else 0
+                x = line[i]
+                if f == 0: v = x
+                elif f == 1: v = (x + a) & 255
+                elif f == 2: v = (x + b) & 255
+                elif f == 3: v = (x + (a + b) // 2) & 255
+                elif f == 4: v = (x + paeth(a, b, c)) & 255
+                else: raise AssertionError('bad filter ' + str(f))
+                row[i] = v
+            out_bits[y * stride_b:(y + 1) * stride_b] = row
+            prev_bits = row
+        # unpack bits -> palette or gray -> RGB bytes
+        out = bytearray(w * h * 3)
+        for y in range(h):
+            stride_b = (stride_bits + 7) // 8
+            for x in range(nsamp):
+                idx = 0
+                base = y * stride_bits + x * bitdepth
+                for k in range(bitdepth):
+                    idx = (idx << 1) | getbit(out_bits, base + k)
+                if color_type == 3:
+                    r, g, b = palette[idx * 3], palette[idx * 3 + 1], palette[idx * 3 + 2]
+                else:
+                    mx = (1 << bitdepth) - 1
+                    r = g = b = idx * 255 // mx
+                o = (y * w + (x // channels)) * 3 + (x % channels)
+                out[o] = r; out[o + 1] = g; out[o + 2] = b
+        return w, h, bytes(out)
     channels = channels * (2 if bitdepth == 16 else 1)  # 16-bit: 2 bytes/chan
     bpp = channels  # bytes per pixel (8-bit)
     stride = w * bpp

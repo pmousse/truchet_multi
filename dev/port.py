@@ -309,8 +309,8 @@ class Canvas:
                 i = (y * w + x) * 3
                 self.px[i:i + 3] = bytes(bg)
 
-    def fill_poly(self, pts, color, xform=None):
-        """Even-odd scanline fill. pts in world coords; xform applied."""
+    def fill_poly(self, pts, color, xform=None, rule='nonzero'):
+        """Nonzero-winding (default) or even-odd scanline fill. World coords."""
         if len(pts) < 3:
             return
         tx = []
@@ -334,19 +334,42 @@ class Canvas:
         for py in range(y0, y1 + 1):
             yc = py + 0.5
             xs = []
+            # collect signed crossings: +1 when edge crosses upward (y increasing),
+            # -1 when downward. Scanline pixel coordinates are screen-y (already
+            # flipped by the transform), so "upward" here is in transformed space.
+            xs = []
             for i in range(n):
                 x1_, y1_ = tx[i]
                 x2_, y2_ = tx[(i + 1) % n]
-                if (y1_ <= yc < y2_) or (y2_ <= yc < y1_):
+                if (y1_ <= yc < y2_):
                     t = (yc - y1_) / (y2_ - y1_)
-                    xs.append(x1_ + t * (x2_ - x1_))
-            xs.sort()
-            for k in range(0, len(xs) - 1, 2):
-                xa = max(0, int(math.ceil(xs[k] - 0.5)))
-                xb = min(self.w - 1, int(math.floor(xs[k + 1] - 0.5)))
-                for pxx in range(xa, xb + 1):
-                    idx = (py * self.w + pxx) * 3
-                    self.px[idx:idx + 3] = bytes(color)
+                    xs.append((x1_ + t * (x2_ - x1_), 1))
+                elif (y2_ <= yc < y1_):
+                    t = (yc - y1_) / (y2_ - y1_)
+                    xs.append((x1_ + t * (x2_ - x1_), -1))
+            xs.sort(key=lambda p: p[0])
+            winding = 0
+            run_start = None
+            for k in range(len(xs)):
+                x_prev, dir_prev = xs[k]
+                if k + 1 < len(xs):
+                    x_next, _ = xs[k + 1]
+                else:
+                    x_next = None
+                winding += dir_prev
+                if rule == 'nonzero':
+                    inside = winding != 0
+                else:
+                    inside = (winding & 1) == 1
+                if inside and run_start is None:
+                    run_start = x_prev
+                elif not inside and run_start is not None:
+                    xa = max(0, int(math.ceil(run_start - 0.5)))
+                    xb = min(self.w - 1, int(math.floor(x_prev - 0.5)))
+                    for pxx in range(xa, xb + 1):
+                        idx = (py * self.w + pxx) * 3
+                        self.px[idx:idx + 3] = bytes(color)
+                    run_start = None
 
     def to_png(self, path):
         raw = bytearray()

@@ -381,9 +381,10 @@ const Truchet = (function () {
           }
         }
         ctx.closePath();
-        // even-odd fill matches the gold rasterizer (arcs can wrap 270 deg
-        // around tile corners and self-overlap)
-        ctx.fill('evenodd');
+        // Nonzero winding fill. Carlson's renderer composites same-color
+        // polygons opaquely; even-odd would leave white slits where a
+        // circuit's lens arms overlap (x., yn, ts, tw, asw, anw, ane, yw).
+        ctx.fill();
       }
     }
   }
@@ -393,7 +394,7 @@ const Truchet = (function () {
     const order = tiles.slice().sort((a, b) => tileDepth(a) - tileDepth(b)); // big first
     for (const t of order) {
       if (bounds) {
-        const m = t.s / 6 + t.s * 0.1;
+        const m = t.s / 3 + t.s * 0.02; // wings reach exactly s/3
         if (t.x + t.s + m < bounds[0] || t.x - m > bounds[2] ||
           t.y + t.s + m < bounds[1] || t.y - m > bounds[3]) continue;
       }
@@ -416,7 +417,7 @@ const Truchet = (function () {
   function fitTransform(ctx, tiles, w, h, padding = 0) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const t of tiles) {
-      const m = t.s / 4;   // generous wing margin (wings reach s/6, plus slop)
+      const m = t.s / 3 + t.s * 0.02; // wings reach exactly s/3 beyond the tile square
       minX = Math.min(minX, t.x - m); minY = Math.min(minY, t.y - m);
       maxX = Math.max(maxX, t.x + t.s + m); maxY = Math.max(maxY, t.y + t.s + m);
     }
