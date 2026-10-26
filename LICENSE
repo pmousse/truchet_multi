@@ -1,0 +1,44 @@
+MIT License
+
+Copyright (c) 2026 pmousse
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files — specifically the original
+code and text authored in this repository (src/, build.js, index.html, dev/,
+README.md, HANDOFF.md, NOTICE and the build output dist/truchet.html) — to deal
+in the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.  Please also preserve the
+attribution described in NOTICE (the underlying patterns and mathematics are
+Christopher Carlson's).
+
+WHAT THIS LICENSE DOES NOT COVER
+--------------------------------
+Material in this repository that belongs to other people stays under its own
+terms.  It is kept here for study, reference and fidelity testing only, and is
+not licensed, sublicensed or redistributed by this license:
+
+  - mstp/MultiScaleTruchetPatterns.wl
+    mstp/MultiScaleTruchetPatternExamples.nb
+        Christopher Carlson's original Wolfram Language source and examples.
+  - truchet_page.html, truchet_page2.html, truchet_text.txt, mstp.zip
+        saved copies of Carlson's published article / package download.
+  - ref_*.png, carlson_cells_sheet.png, mstp_full_raw.png, truchet_carlson_g1.png
+        Carlson's published images (and crops/zooms of them) used as visual
+        references.
+
+The engine in src/engine.js is an independent reimplementation, written in
+JavaScript, of the geometry and algorithm Carlson publishes.  It is not a
+translation of his source file, and no code from his file is copied into it.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

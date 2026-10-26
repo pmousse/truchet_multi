@@ -265,6 +265,18 @@ typed/old links and hand-built QA queries were affected. `readHash()` in
    (64 x 36 = 2304 tiles at 4K). A timing benchmark (×1 vs ×4, square vs 16:9)
    is still worth doing.
 
+## License & attribution (added on request)
+- `LICENSE` = MIT for **our** code only (© 2026 pmousse — change the name if you
+  want your own legal name on it), with an explicit carve-out stating that
+  Carlson's material in this repo (`mstp/*`, the saved article copies,
+  `ref_*.png`) is NOT covered by that license.
+- `NOTICE` = the attribution text to keep with any copy. `mstp/README.md` says the
+  same thing inside the folder. `README.md` → "License & provenance".
+- The app credits Carlson visibly (`#credit`, bottom of the panel) and
+  `src/engine.js` carries the credit in its file header, so the single-file
+  `dist/truchet.html` carries it too. Nothing from Carlson's files is inlined by
+  `build.js` — it inlines `src/style.css`, `src/engine.js` and `src/app.js` only.
+
 ## User preferences
 Faithful port, not stylized. Single-file HTML, vanilla JS, no deps. Dark
 chrome, gallery-first canvas. Credit Carlson (Bridges 2018). Export PNG

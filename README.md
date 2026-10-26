@@ -87,20 +87,41 @@ match the Python gold model, which itself matches Carlson's images.
 - [x] Phase 1b: engine rewritten as literal port; passes gold checks
 - [x] Phase 1c: rendering pipeline fixed (polyline arc fills, draw order,
   math-y-up orientation) and verified end-to-end against browser screenshots
-- [x] Phase 1d: Generator tab UI (seed, tilings, 24-motif picker, palettes,
-  custom depth ramp, crop-based export, shareable URL hash)
-- [ ] Phase 2+: Fill / Photo / Composer / Mandala tabs
+- [x] Phase 1d: Generator tab UI (seed, tilings, motif picker limited to
+  Carlson's 15 motifs + a `mix` cell, multi-select motif pools, palettes,
+  custom depth ramp, shareable URL hash)
+- [x] Phase 1e: framing — the tiling is generated FOR the target frame (wallpaper
+  and social ratios) and fills it edge to edge; density is a live ×1…×N multiplier
+- [x] Mandala tab (radial Truchet): built and QA-verified, then **removed** at the
+  user's request; see `HANDOFF.md`
+- [ ] Phase 2+: Fill / Photo / Composer tabs
 
 ## Using the Generator
 
 Open `index.html` (dev) or `dist/truchet.html` (single file, run `node build.js`
 after changes). Everything lives in the URL hash — "copy link" shares the
-exact pattern + seed. PNG export crops from the bounding square (Carlson's
-`CropSquareTiling`) for portrait/landscape sizes; export filenames encode
-seed and params instead of a watermark, e.g.
-`truchet_chk6_k7x2m9_m-sl_pink_2048x2048.png`.
+pattern + seed. Export renders the chosen frame at full resolution (16:9 at 4K
+is 3840 × 2160) with the same lattice shown on screen; nothing is cropped.
+Export filenames encode tiling, lattice size, seed, motifs and palette instead of
+a watermark, e.g. `truchet_checkerboard64x36_k7x2m9_m-sl_pink_3840x2160.png`.
 
-## Credit
+## License & provenance
+
+- **Our code** (`src/`, `build.js`, `index.html`, `dev/`, `dist/`, docs): **MIT**,
+  © 2026 pmousse — see `LICENSE`. Use it, modify it, sell prints made from it;
+  keep the license text and the attribution.
+- **Christopher Carlson's material** in this repo — `mstp/*.wl`, `mstp/*.nb`,
+  `mstp.zip`, the saved article copies (`truchet_page*.html`, `truchet_text.txt`)
+  and the reference images (`ref_*.png`, `carlson_cells_sheet.png`,
+  `mstp_full_raw.png`, `truchet_carlson_g1.png`) — is **not** covered by that
+  license. It lives here for study and fidelity testing and is not ours to
+  sublicense or redistribute.
+- `src/engine.js` was written from the published description of the geometry. It
+  is not a translation of Carlson's Wolfram file and contains none of its code.
+  `dev/port.py` is a separate Python model of the same geometry used as a test
+  oracle, not a distribution artifact.
+- `NOTICE` carries the attribution text that should travel with any copy, and the
+  app states the credit in its own panel.
 
 All design and math credit to [Christopher Carlson](https://christophercarlson.com/);
 see also his paper in *Bridges 2018*. This project is an independent

@@ -1,0 +1,29 @@
+NOTICE — attribution to preserve when copying or distributing this project
+
+Pattern design and mathematics
+  Christopher Carlson, "Multi-Scale Truchet Patterns", Bridges 2018.
+  https://christophercarlson.com/portfolio/multi-scale-truchet-patterns/
+
+  This project is an independent reimplementation of those ideas in JavaScript
+  (and, for testing, in Python).  It is not affiliated with, endorsed by, or
+  derived from Carlson's code: no line of his Wolfram Language source was
+  translated into this engine.  The engine reproduces the same geometry —
+  connection points, circuit tracing, arcs through tangent neighbours, wing
+  polygons, depth-parity inversion — because that geometry is what makes the
+  patterns behave correctly.
+
+Third-party files kept for reference only (see LICENSE: not covered by this
+repository's license, not ours to redistribute)
+  mstp/MultiScaleTruchetPatterns.wl        Carlson's Wolfram source
+  mstp/MultiScaleTruchetPatternExamples.nb Carlson's example notebook
+  mstp.zip                                 packaged copy of the above
+  truchet_page.html, truchet_page2.html,   saved copies of his article
+  truchet_text.txt
+  ref_*.png, carlson_cells_sheet.png,      his published images, and crops and
+  mstp_full_raw.png, truchet_carlson_g1.png  zooms of them, used as references
+
+Our own work (MIT, © 2026 pmousse): src/, build.js, index.html, dev/,
+dist/truchet.html, README.md, HANDOFF.md.
+
+If you distribute this project, please keep this file, the LICENSE text and the
+in-app credit in index.html ("Patterns & math: Christopher Carlson …").
