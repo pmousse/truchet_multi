@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>ink harness</title>
+<style>body{margin:0;background:#111318;color:#dfe3ea;font:11px/1.5 ui-monospace,Consolas,monospace}
+pre{padding:10px;white-space:pre-wrap}</style>
+</head><body>
+<pre id="out">measuring...</pre>
+<script src="../src/engine.js"></script>
+<script>
+(function () {
+  'use strict';
+  const T = window.Truchet;
+
+  /* What has to be measured, and why.
+   *
+   * Carlson's tile is circuits only - SquareArcTile emits white polygons then
+   * black polygons, and RenderTiling draws them coarse to fine over one shared
+   * background. So in a multi-scale tiling a tile does not replace what is
+   * underneath it: its light circuits paint light over the lower layers and its
+   * dark circuits paint dark, and wherever it paints nothing the lower layers
+   * keep showing. Three numbers per motif and parity describe that completely:
+   *
+   *   dark   fraction of the tile SQUARE painted dark by this tile alone,
+   *          standing on a white ground
+   *   cover  fraction of the square this tile paints at ALL (either colour),
+   *          measured on a grey ground by counting what changed
+   *   1-cover  the fraction of the square left to whatever was painted below
+   *
+   * A tile laid over an area that was already 'under' dark then ends up at
+   *     dark + under * (1 - cover)
+   * which is the prediction the Photo tab selects motifs with, and the Photo QA
+   * checks against the pixels the app really painted.
+   *
+   * All counts are taken inside the tile square. fitTransform fits a tile
+   * INCLUDING its wings (s/3 overshoot), so the square is only part of the
+   * canvas - counting the whole canvas would understate every fraction by the
+   * ratio between the two, which is what an earlier version of this harness did.
+   */
+  const N = 240;
+
+  function squareRect() {
+    /* fitTransform of the single unit tile at (0,0): bounds carry the wings. */
+    const m = 1 / 3 + 0.02;
+    const lo = -m, hi = 1 + m, bw = hi - lo;
+    const s = N / bw;                      // min(N/bw, N/bh) with a square tile
+    return { x0: (N - bw * s) / 2 - lo * s, y0: (N + bw * s) / 2 + lo * s - s,
+      x1: (N - bw * s) / 2 - lo * s + s, y1: (N + bw * s) / 2 + lo * s };
+  }
+
+  function measure(name, parity, ground) {
+    const c = document.createElement('canvas');
+    c.width = N; c.height = N;
+    const cx = c.getContext('2d');
+    cx.setTransform(1, 0, 0, 1, 0, 0);
+    cx.fillStyle = ground;
+    cx.fillRect(0, 0, N, N);
+    const tile = { x: 0, y: 0, s: parity === 1 ? 0.5 : 1 };
+    T.fitTransform(cx, [tile], N, N, 0);
+    T.renderTiling(cx, [tile], {
+      pickTile: () => T.connIdxByName(name),
+      palette: T.PALETTES.bw
+    });
+    cx.setTransform(1, 0, 0, 1, 0, 0);
+    const r = squareRect();
+    const x0 = Math.max(0, Math.ceil(r.x0)), x1 = Math.min(N, Math.floor(r.x1));
+    const y0 = Math.max(0, Math.ceil(r.y0)), y1 = Math.min(N, Math.floor(r.y1));
+    const d = cx.getImageData(x0, y0, x1 - x0, y1 - y0).data;
+    let dark = 0, light = 0, total = 0;
+    const base = ground === '#808080' ? 128 : 255;
+    for (let i = 0; i < d.length; i += 4) {
+      const v = d[i];
+      if (base === 128) {
+        if (v < 100) dark++; else if (v > 156) light++;
+      } else {
+        if (v < 128) dark++;
+      }
+      total++;
+    }
+    const area = (x1 - x0) * (y1 - y0);
+    if (total !== area) throw new Error('sampling area mismatch');
+    return { dark: dark / area, cover: (dark + light) / area };
+  }
+
+  const out = [];
+  const ink = {}, inkOdd = {}, cover = {}, coverOdd = {};
+  for (const name of T.TILE_NAMES) {
+    const a = measure(name, 0, '#ffffff');
+    const b = measure(name, 1, '#ffffff');
+    const c1 = measure(name, 0, '#808080');
+    const c2 = measure(name, 1, '#808080');
+    ink[name] = +a.dark.toFixed(4);
+    inkOdd[name] = +b.dark.toFixed(4);
+    cover[name] = +c1.cover.toFixed(4);
+    coverOdd[name] = +c2.cover.toFixed(4);
+  }
+
+  /* Same geometry painted in swapped colours: the area touched must agree. */
+  let coverBad = [];
+  for (const name of T.TILE_NAMES) {
+    if (Math.abs(cover[name] - coverOdd[name]) > 0.02)
+      coverBad.push(name + ' (' + cover[name] + ' / ' + coverOdd[name] + ')');
+  }
+
+  out.push('== measured from the renderer, counted inside the tile square ==');
+  out.push('dark  : fraction painted dark by the tile alone on a white ground');
+  out.push('cover : fraction painted at all (grey ground, counted by change)');
+  out.push('cover agrees between parities: ' + (coverBad.length ? coverBad.join(', ') : 'yes, all 24'));
+  out.push('untouched fraction (1 - cover), averaged: ' +
+    (T.TILE_NAMES.reduce((a, n) => a + (1 - cover[n]), 0) / T.TILE_NAMES.length).toFixed(3));
+  out.push('dark range, even depth: ' + Math.min.apply(null, T.TILE_NAMES.map((n) => ink[n])).toFixed(3) +
+    ' - ' + Math.max.apply(null, T.TILE_NAMES.map((n) => ink[n])).toFixed(3));
+  out.push('dark range, odd depth:  ' + Math.min.apply(null, T.TILE_NAMES.map((n) => inkOdd[n])).toFixed(3) +
+    ' - ' + Math.max.apply(null, T.TILE_NAMES.map((n) => inkOdd[n])).toFixed(3));
+  out.push('');
+  out.push('INK_TABLE_START');
+  const table = (label, m) => {
+    out.push('const ' + label + ' = {');
+    for (const name of T.TILE_NAMES) out.push('  ' + JSON.stringify(name) + ': ' + m[name] + ',');
+    out.push('};');
+  };
+  table('MOTIF_INK', ink);
+  table('MOTIF_INK_ODD', inkOdd);
+  table('MOTIF_COVER', cover);
+  table('MOTIF_COVER_ODD', coverOdd);
+  out.push('INK_TABLE_END');
+  out.push('');
+  out.push('sorted by ink: ' + T.TILE_NAMES.slice().sort((a, b) => ink[a] - ink[b])
+    .map((n) => n + '=' + ink[n] + '/' + cover[n]).join(', '));
+  document.getElementById('out').textContent = out.join('\n');
+})();
+</script>
+</body></html>

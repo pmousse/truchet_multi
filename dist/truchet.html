@@ -135,6 +135,11 @@ body:not(.panel-hidden) #showBtn { display: none; }
   background: #5a1f1f; color: #ffd9d9; padding: 8px 14px; border-radius: 8px;
   display: none; z-index: 20;
 }
+#err.show { display: block; }
+input[type="file"] { font-size: 10.5px; flex: 1; min-width: 0; padding: 4px 6px; }
+input[type="checkbox"] { width: auto; margin-right: 6px; accent-color: var(--accent); }
+label.check { display: flex; align-items: center; color: var(--panel-fg); }
+#photoName { font-family: ui-monospace, Consolas, monospace; }
 
 </style>
 </head>
@@ -150,8 +155,8 @@ body:not(.panel-hidden) #showBtn { display: none; }
   </div>
   <nav id="tabs">
     <button class="active" data-tab="gen">Generator</button>
+    <button data-tab="photo">Photo</button>
     <button disabled title="coming soon">Fill</button>
-    <button disabled title="coming soon">Photo</button>
     <button disabled title="coming soon">Composer</button>
   </nav>
   <div id="panelBody">
@@ -198,10 +203,33 @@ body:not(.panel-hidden) #showBtn { display: none; }
     </div>
     </div><!-- /genParams -->
 
+    <div id="photoParams">
+    <div class="sect">Image</div>
+    <div class="row wrap">
+      <button class="action" id="btnPhotoPick">choose image&hellip;</button>
+      <input type="file" id="inPhoto" accept="image/*">
+    </div>
+    <div class="row"><span id="photoName" class="info"></span></div>
+    <div class="row"><span class="hint">or drop one on the canvas / paste it &mdash; it is read locally, never uploaded, and is not part of a share link</span></div>
+    <div class="sect">Multi-scale</div>
+    <div class="row"><label>base scale</label><input type="range" id="inBase" min="1" max="12" step="1">
+      <span id="outBase" class="info"></span></div>
+    <div class="row"><label>detail</label><input type="range" id="inPdepth" min="1" max="8" step="1">
+      <span id="outPdepth" class="info"></span></div>
+    <div class="row"><label>smoothness</label><input type="range" id="inPflat" min="0" max="30" step="1">
+      <span id="outPflat" class="info"></span></div>
+    <div class="row"><label>contrast</label><input type="range" id="inPcon" min="20" max="250" step="5">
+      <span id="outPcon" class="info"></span></div>
+    <div class="row"><label class="check"><input type="checkbox" id="chkPinvert"> invert tones</label></div>
+    <div class="row"><span class="hint">detail = how deep the quadtree may split; smoothness = how uniform a region must be before it stops splitting</span></div>
+    </div><!-- /photoParams -->
+
+    <div id="motifSect">
     <div class="sect">Motif</div>
     <div id="motifGrid"></div>
     <div class="row"><span id="motifInfo" class="info"></span></div>
     <div class="row"><span class="hint">click = one motif &middot; ctrl/cmd/shift+click = add to a random pool</span></div>
+    </div><!-- /motifSect -->
 
     <div class="sect">Color</div>
     <div class="row"><select id="selPal">
@@ -357,6 +385,45 @@ const Truchet = (function () {
     'fnw', 'fne', 'fse', 'fsw',
     'tn', 'te', 'ts', 'tw'
   ];
+
+  /* Fraction of a tile's square covered by its dark circuits, measured from this
+   * engine's own geometry (dev/_inkqa.py rasterizes each tile and counts sample
+   * points inside its circuits -- the same polygons renderTiling composites).
+   * The Photo tab uses it to choose the motif whose tone matches a region of an
+   * image; verified against the browser's own fill in dev/_inkqa2.py. */
+  /* Ink: the fraction of the tile's own square this engine paints DARK for a
+   * motif at even depth over a light ground, and 1 - ink at odd depth where the
+   * two circuit colour classes swap (Carlson's InvertMotif swaps a motif's
+   * colours; SquareArcTile is circuits only and fills no ground).
+   *
+   * Measured, not modelled. dev/inktest.html renders each motif alone at 240x240
+   * and counts pixels INSIDE THE TILE SQUARE: fitTransform fits a tile including
+   * its wings, so counting the whole canvas understates every fraction - an early
+   * version of this harness did exactly that and every number in this table was
+   * too small by roughly the canvas-to-square area ratio.
+   *
+   * The same harness also renders each motif on a grey ground and counts what
+   * changed, which measures how much of the square the tile paints at all: 0.98
+   * to 0.99 for all 24 motifs, at either parity. Two things follow, and inktest
+   * checks both. A tile's ink and its inverted ink add up to that coverage - the
+   * two circuit classes partition the area the tile paints - so inverted coverage
+   * is 1 - ink to within the 1-2% a tile leaves untouched; and a tile in a
+   * multi-scale tiling effectively repaints its own square rather than overlaying
+   * what was drawn below it, so per-tile tone control is real. dev/_inkqa.py
+   * re-runs the measurement and gates this table against it.
+   */
+  const MOTIF_INK = {
+    '+.': 0.1729,
+    fnw: 0.3489, fne: 0.3491, fse: 0.3490, fsw: 0.3489,
+    yn: 0.4030, ye: 0.3973, ys: 0.4029, yw: 0.3969,
+    p: 0.4101,
+    '-': 0.4292, '|': 0.4151,
+    '/': 0.5250, '\\': 0.5252,
+    tn: 0.5417, te: 0.5347, ts: 0.5417, tw: 0.5347,
+    '+': 0.5588,
+    anw: 0.5629, ane: 0.5629, ase: 0.5629, asw: 0.5631,
+    'x.': 0.6543
+  };
 
   /* ---------- circuits (Carlson's SquareConnectionCircuits) ----------
    * Walk from every starting point 1..8: first step internal, then
@@ -744,7 +811,7 @@ const Truchet = (function () {
 
   return {
     PPS, NP, PT, SIDE, INWARD, coordinate,
-    CONNECTION_SETS, TILE_NAMES, MOTIF_NAMES, NAMED_TILES,
+    CONNECTION_SETS, TILE_NAMES, MOTIF_NAMES, MOTIF_INK, NAMED_TILES,
     connIdxByName, nameForConnIdx,
     mulberry32, seedFromString, randSeed,
     traceCircuits, circuitSegments, circuitPolygon, sampleArc, getTile, tileDepth,
@@ -776,9 +843,69 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     pad: 2,             // margin percent
     format: '1:1',      // frame format key, or 'custom'
     res: 2048,          // long edge in px when a preset format is used
-    fw: 3840, fh: 2160  // explicit frame size when format === 'custom'
+    fw: 3840, fh: 2160, // explicit frame size when format === 'custom'
+    tab: 'gen'          // 'gen' | 'photo' (other tabs register themselves)
   };
   let S = Object.assign({}, DEFAULTS);
+
+  /* ================= tab shell =================
+   * A tab can own its params block, its motif picker, its export-name prefix,
+   * its own way of producing tiles, and (optionally) a ground painted under the
+   * tiles. Generator lives here; Photo lives in src/photo.js and registers
+   * itself through window.TruchetApp, which keeps that tab's state out of the
+   * share link entirely.
+   *
+   *   def.ready()          gate: false -> the canvas shows emptyMessage only
+   *   def.tiles(lattice)   produce the tile list for a lattice
+   *   def.picker(tiles)    (depth, tile) -> connection index
+   *   def.params, def.prefix, def.motifs, def.emptyMessage, def.onShow
+   *   def.onRedraw()       called after every redraw, for the tab's own readouts
+   */
+  const TABS = {
+    gen: {
+      label: 'Generator', params: 'genParams', prefix: 'truchet_',
+      motifs: true, ready: () => true, emptyMessage: ''
+    }
+  };
+  function registerTab(key, def) {
+    TABS[key] = Object.assign(
+      { label: key, params: null, prefix: 'truchet_', motifs: true,
+        ready: () => true, emptyMessage: '', onShow: null, tiles: null,
+        picker: null }, def);
+    const btn = document.querySelector('#tabs button[data-tab="' + key + '"]');
+    if (btn) {
+      btn.disabled = false;
+      btn.title = '';
+      btn.addEventListener('click', () => setTab(key));
+    }
+    /* A shared link can open straight into a tab whose script has only just
+     * registered; re-apply so panel and canvas match the hash. */
+    if (S.tab === key) applyTab();
+  }
+  function tabDef() { return TABS[S.tab] || TABS.gen; }
+  function applyTab() {
+    const def = tabDef();
+    for (const b of document.querySelectorAll('#tabs button[data-tab]'))
+      b.classList.toggle('active', b.dataset.tab === S.tab);
+    document.title = 'Truchet Studio \u2014 ' + def.label;
+    if (def.onShow) def.onShow();
+    refreshParamVisibility();
+    renderMain();
+    updateMotifSel();
+  }
+  function setTab(key) {
+    if (!TABS[key]) return;
+    S.tab = key;
+    applyTab();
+  }
+  function showError(msg) {
+    const el = document.getElementById('err');
+    if (el) { el.textContent = msg; el.className = 'show'; }
+  }
+  function clearError() {
+    const el = document.getElementById('err');
+    if (el) { el.textContent = ''; el.className = ''; }
+  }
 
   /* Framing model: a frame is a target pixel size (desktop wallpaper, square
    * social post, phone wallpaper...).  The tiling is generated FOR that frame:
@@ -812,7 +939,7 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
   const HASH_KEYS = {
     tiling: 't', n: 'n', splits: 'sp',
     maxd: 'md', seed: 'sd', motifs: 'm', pal: 'p', c1: 'c1', c2: 'c2',
-    bg: 'bg', pad: 'pd', format: 'F', res: 'rs', fw: 'fw', fh: 'fh'
+    bg: 'bg', pad: 'pd', format: 'F', res: 'rs', fw: 'fw', fh: 'fh', tab: 'tb'
   };
   function writeHash() {
     const p = new URLSearchParams();
@@ -933,7 +1060,10 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
   }
 
   /* ================= tiling + pickTile ================= */
-  function buildTiling() { return tilingFor(lattice()); }
+  function buildTiling() {
+    const def = tabDef();
+    return def.tiles ? def.tiles(lattice()) : tilingFor(lattice());
+  }
   /* The motif cells form a pool: one cell = that motif everywhere, several
    * cells (ctrl+click) = one of them chosen at random per tile, exactly like
    * 'mix' but restricted to the chosen subset. 'mix' means all 15. */
@@ -1004,7 +1134,7 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     const wx0 = (x0 + x1) / 2 - winW / 2, wy0 = (y0 + y1) / 2 - winH / 2;
     cx.setTransform(s, 0, 0, -s, -s * wx0, h + s * wy0);
     T.renderTiling(cx, tiles, {
-      pickTile: buildPicker(tiles),
+      pickTile: (tabDef().picker || buildPicker)(tiles),
       palette: buildPalette(tiles),
       bounds: [wx0, wy0, wx0 + winW, wy0 + winH]
     });
@@ -1039,9 +1169,24 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
       lastDpr = dpr;
       paintPreviews();
     }
+    const def = tabDef();
+    if (!def.ready()) {
+      /* Nothing to draw yet (Photo with no image chosen): paint just the
+       * ground, so the stage still shows the frame and its real colour. */
+      const cx = canvas.getContext('2d');
+      cx.setTransform(1, 0, 0, 1, 0, 0);
+      cx.fillStyle = (S.pal === 'custom') ? S.bg
+        : (T.PALETTES[S.pal] || T.PALETTES.bw)[1];
+      cx.fillRect(0, 0, w, h);
+      const info = document.getElementById('frameInfo');
+      if (info) info.textContent = def.emptyMessage;
+      if (def.onRedraw) def.onRedraw();
+      return;
+    }
     const tiles = buildTiling();
     drawScene(canvas, tiles, w, h);
     updateFrameInfo(tiles);
+    if (def.onRedraw) def.onRedraw();   // a tab reports its own state here
   }
 
   /* ================= export ================= */
@@ -1060,8 +1205,8 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     const isMix = pool.length === T.MOTIF_NAMES.length &&
       pool.every((m, i) => m === T.MOTIF_NAMES[i]);
     const motif = isMix ? 'mix' : pool.map(sanitizeMotif).join('-');
-    return 'truchet_' + S.tiling + sizePart + '_' + S.seed + '_m' + motif +
-      '_p' + pal + '_' + w + 'x' + h + '.png';
+    return (tabDef().prefix || 'truchet_') + S.tiling + sizePart + '_' + S.seed +
+      '_m' + motif + '_p' + pal + '_' + w + 'x' + h + '.png';
   }
   function exportPNG() {
     const [w, h] = framePx();
@@ -1101,11 +1246,17 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
   }
   function refreshParamVisibility() {
     const show = (id, on) => $(id).style.display = on ? '' : 'none';
-    show('rowN', true);
+    const def = tabDef();
+    /* Each tab owns its params block; Frame / Color / Output are shared. */
+    show('genParams', def.params === 'genParams');
+    for (const [key, t] of Object.entries(TABS)) {
+      if (t.params && t.params !== 'genParams') show(t.params, key === S.tab);
+    }
+    show('motifSect', def.motifs !== false);
     show('rowFrameSize', S.format === 'custom');
     show('rowRes', S.format !== 'custom');
     $('lblRes').textContent = 'long edge';
-    show('rowRand', S.tiling === 'rand');
+    show('rowRand', def.params === 'genParams' && S.tiling === 'rand');
     show('rowCustomPal', S.pal === 'custom');
     /* The density range depends on the frame: a 1:1 frame can carry far more
      * tiles than a 21:9 one before the tile caps bite. Clamping here keeps the
@@ -1115,6 +1266,16 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     S.n = clamp(Math.round(S.n) || 1, 1, maxT);
     $('inN').value = S.n;
     $('outN').textContent = '×' + lattice().t;
+  }
+  function initTabs() {
+    /* Tabs not yet registered (Photo registers itself after app.js) stay as they
+     * are in the markup: disabled placeholders. registerTab() enables its own. */
+    for (const b of document.querySelectorAll('#tabs button[data-tab]')) {
+      if (!TABS[b.dataset.tab]) continue;
+      b.disabled = false;
+      b.classList.toggle('active', b.dataset.tab === S.tab);
+      b.addEventListener('click', () => setTab(b.dataset.tab));
+    }
   }
   function onChange() {
     writeHash(); refreshParamVisibility(); renderMain(); updateMotifSel();
@@ -1148,6 +1309,16 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
 
   /* export controls */
   $('btnExport').addEventListener('click', () => exportPNG());
+
+  /* base lattice for the Photo tab: same lattice the Generator uses, clamped to
+   * what the frame can carry before the quadtree even starts subdividing */
+  function baseScale() {
+    const maxT = Math.max(1, Math.min(latticeMaxT(), Math.floor(
+      Math.sqrt(MAX_LATTICE_TILES / (frameRatio()[0] * frameRatio()[1])))));
+    const v = clamp(Math.round(S.n) || 1, 1, maxT);
+    return { value: v, max: maxT };
+  }
+  function setBaseScale(v) { S.n = +v || 1; onChange(); }
 
   /* motif picker: the 15 tiles from Carlson's motifs figure, plus a mix cell */
   const grid = $('motifGrid');
@@ -1230,6 +1401,7 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
 
   /* ================= boot ================= */
   readHash();
+  initTabs();
   // tiles outside Carlson's 15 (old links) fall back to the default motif
   S.motifs = (S.motifs || []).filter(
     (m) => m === 'mix' || T.MOTIF_NAMES.includes(m));
@@ -1245,6 +1417,540 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     cancelAnimationFrame(rAF);
     rAF = requestAnimationFrame(paintPreviews);
   });
+  window.TruchetApp = {
+    hooks: {},                       // tabs fill these in: hooks.photo = {...}
+    registerTab,
+    state: () => S,
+    frameRatio, framePx, lattice, latticeMaxT,
+    maxLatticeTiles: () => MAX_LATTICE_TILES,
+    motifPool,
+    buildTiling: buildTiling,           // dev harnesses: the tab shell's tiling path
+    tab: () => S.tab,
+    setTab, setBaseScale, baseScale,
+    showError, clearError, onChange
+  };
+})();
+
+</script>
+<script>
+/* Photo tab for Truchet Studio.
+ *
+ * Renders an image as a multi-scale Truchet pattern with the same engine as the
+ * Generator tab, using Carlson's two ideas and nothing invented:
+ *
+ *   1. a quadtree that subdivides where the image actually changes, so tile size
+ *      follows the scale of the features (his multi-scale construction), and
+ *   2. per-tile motif choice, here driven by tone: each motif covers a known
+ *      fraction of its square (T.MOTIF_INK, measured from this engine's own
+ *      rendering), so a tile is given the motif whose coverage the image is
+ *      asking for at that spot.
+ *
+ * Tone needs two bands, and a tiling on one ground provides exactly two, in
+ * Carlson's own terms: a tile at even depth covers MOTIF_INK of its square in
+ * the dark colour, a tile at odd depth is the same motif with its colours swapped
+ * (his InvertMotif) and covers 1 - MOTIF_INK. Both halves are measured from this
+ * engine's rendering, not derived, and the measurement also shows that the two
+ * circuit colour classes partition the square - between them they cover 0.99 of
+ * it - so a tile repaints its own square instead of overlaying what was drawn
+ * below it, which is what makes per-tile tone control possible at all. Measured
+ * ink runs 0.17 to 0.65 plain and 0.35 to 0.83 inverted, a wide range but not the
+ * whole greyscale: contrast is preserved, the extremes are not, because the model
+ * has nothing darker or lighter to give.
+ * The quadtree therefore chooses *which parity* a cell lands on as well as how
+ * far it subdivides, and a cell's tone is clamped into the range the chosen
+ * motifs can actually reach: tones inside it are kept exactly, and only the
+ * extremes are given up.
+ *
+ * The image never leaves the page: it is decoded locally, reduced to a small
+ * luminance grid with summed area tables, and nothing about it goes into the
+ * share link. That is why a Photo link reopens asking for the image again.
+ *
+ * Loaded after src/app.js, which exposes the tab shell on window.TruchetApp.
+ */
+(function () {
+  'use strict';
+  const TR = window.Truchet;
+  const app = window.TruchetApp;
+  if (!TR || !app) {
+    app && app.showError('photo tab: app shell missing');
+    return;
+  }
+
+  const PHOTO_SAMPLE_EDGE = 720;   // long edge of the luminance sampling grid
+  const PHOTO_MIN_PX = 12;         // never subdivide below this in the export
+  const PHOTO_MAX_DEPTH = 8;       // hard ceiling: a cell can shrink to 1/256
+  const PHOTO_TONE_DITHER = 2;     // splits allowed purely to get the tone right
+  const INK_JITTER = 0.05;         // tone slack that still counts as a match
+
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+  /* Photo-only state, deliberately outside app's state so it cannot leak into
+   * the share link. */
+  const P = {
+    contrast: 100,        // %   (100 = neutral)
+    depth: 5,             // quadtree subdivision steps, further limited by tile size
+    flatness: 6,          // % local std that counts as "uniform, stop here"
+    invert: false,        // treat dark as light
+    base: 2,              // base lattice multiplier (app's S.n, mirrored here)
+    name: '',
+    image: null,          // {w,h,lum,contrast,sat,sat2}
+    tiles: null, sig: '', map: null, depthUsed: 0
+  };
+
+  /* ---------- loading ---------- */
+  async function loadFile(file) {
+    if (!file) return false;
+    let img = null;
+    try {
+      if (window.createImageBitmap) {
+        img = await createImageBitmap(file);
+      } else {
+        img = await new Promise((resolve, reject) => {
+          const url = URL.createObjectURL(file);
+          const im = new Image();
+          im.onload = () => { URL.revokeObjectURL(url); resolve(im); };
+          im.onerror = () => { URL.revokeObjectURL(url); reject(new Error('decode failed')); };
+          im.src = url;
+        });
+      }
+    } catch (e) {
+      app.showError('could not read that image: ' + (e && e.message ? e.message : e));
+      return false;
+    }
+    return adopt(img, file.name);
+  }
+
+  /* Reduce the image to a small luminance grid, once. Alpha is composited onto
+   * white so a transparent PNG reads the way it looks on screen; Rec.709 luma
+   * because that is what human brightness actually is. */
+  function adopt(img, name) {
+    const iw = img.width || img.naturalWidth, ih = img.height || img.naturalHeight;
+    if (!iw || !ih) { app.showError('that file has no pixel size'); return false; }
+    const k = Math.min(1, PHOTO_SAMPLE_EDGE / Math.max(iw, ih));
+    const w = Math.max(1, Math.round(iw * k)), h = Math.max(1, Math.round(ih * k));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const cx = c.getContext('2d', { willReadFrequently: true });
+    cx.fillStyle = '#ffffff';
+    cx.fillRect(0, 0, w, h);
+    cx.drawImage(img, 0, 0, w, h);
+    const d = cx.getImageData(0, 0, w, h).data;
+    const lum = new Float64Array(w * h);
+    for (let p = 0, i = 0; i < d.length; i += 4, p++) {
+      lum[p] = (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255;
+    }
+    P.image = { w, h, lum, contrast: NaN, sat: null, sat2: null };
+    P.name = String(name || 'image').replace(/^.*[\\/]/, '');
+    P.tiles = null; P.sig = ''; P.map = null;
+    app.clearError();
+    app.onChange();
+    syncLabel();
+    return true;
+  }
+
+  /* Summed area tables of luminance and luminance squared, so a quadtree query
+   * costs four array reads rather than a walk over the pixels in the cell.
+   * Contrast is folded in here rather than at sampling time: moving the contrast
+   * slider rebuilds the tables without decoding the image again. */
+  function tables() {
+    const im = P.image;
+    if (!im) return null;
+    const k = clamp(P.contrast, 10, 300) / 100;
+    if (im.contrast === k && im.sat) return im;
+    const w = im.w, h = im.h, lum = im.lum, W = w + 1;
+    const sat = new Float64Array(W * (h + 1));
+    const sat2 = new Float64Array(W * (h + 1));
+    for (let y = 0; y < h; y++) {
+      let rowSum = 0, rowSum2 = 0;
+      const src = y * w, dst = (y + 1) * W;
+      for (let x = 0; x < w; x++) {
+        const v = clamp((lum[src + x] - 0.5) * k + 0.5, 0, 1);
+        rowSum += v; rowSum2 += v * v;
+        sat[dst + x + 1] = sat[dst - W + x + 1] + rowSum;
+        sat2[dst + x + 1] = sat2[dst - W + x + 1] + rowSum2;
+      }
+    }
+    im.contrast = k; im.sat = sat; im.sat2 = sat2;
+    P.tiles = null; P.sig = '';       // the tone statistics just changed
+    return im;
+  }
+
+  /* Mean and standard deviation of the tone over a rectangle given in lattice
+   * units. Image rows run downward while the tiling's y runs upward, which is
+   * the one place the two coordinate systems meet. */
+  function stats(im, map, x0, y0, x1, y1) {
+    const cL = clamp(Math.floor(map.px(x0)), 0, im.w);
+    const cR = clamp(Math.ceil(map.px(x1)), 0, im.w);
+    const ra = clamp(Math.floor(map.py(y1)), 0, im.h);
+    const rb = clamp(Math.ceil(map.py(y0)), 0, im.h);
+    const rTop = Math.min(ra, rb), rBot = Math.max(ra, rb);
+    const area = (cR - cL) * (rBot - rTop);
+    if (area <= 0) return { mean: 1, std: 0 };
+    const W = im.w + 1;
+    const a = rBot * W + cR, b = rTop * W + cR, c = rBot * W + cL, d = rTop * W + cL;
+    const s1 = im.sat[a] - im.sat[b] - im.sat[c] + im.sat[d];
+    const s2 = im.sat2[a] - im.sat2[b] - im.sat2[c] + im.sat2[d];
+    const mean = s1 / area;
+    return { mean, std: Math.sqrt(Math.max(0, s2 / area - mean * mean)) };
+  }
+
+  /* Cover-fit the sampled image onto the lattice rectangle: the frame is filled
+   * completely and the SOURCE is cropped, which is the opposite of cutting a
+   * window out of the pattern (Carlson's CropSquareTiling) and is what the frame
+   * presets are for. */
+  function makeMap(im, L) {
+    const s = (im.w / im.h > L.cols / L.rows) ? L.rows / im.h : L.cols / im.w;
+    const ox = (L.cols - im.w * s) / 2, oy = (L.rows - im.h * s) / 2;
+    return {
+      s, ox, oy,
+      px: (wx) => (wx - ox) / s,
+      py: (wy) => im.h - (wy - oy) / s
+    };
+  }
+
+  /* ---------- tone bands ----------
+   * Which dark coverage the selected motifs can actually produce, per parity,
+   * read from the measured ink table (engine.js documents how it was measured).
+   * Inverted coverage is 1 - ink: the two circuit classes partition the square,
+   * an identity inktest.html verifies rather than assumes. */
+  function bands() {
+    const pool = app.motifPool();
+    let lo = Infinity, hi = -Infinity;
+    for (const m of pool) {
+      const v = TR.MOTIF_INK[m];
+      if (typeof v === 'number') { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+    }
+    if (!(lo <= hi)) { lo = hi = 0.5; }
+    return { lo, hi, even: [lo, hi], odd: [1 - hi, 1 - lo] };
+  }
+  const darkOf = (motif, depth) =>
+    (depth % 2 === 1) ? 1 - TR.MOTIF_INK[motif] : TR.MOTIF_INK[motif];
+  const bandError = (want, depth, b) => {
+    const iv = (depth % 2 === 1) ? b.odd : b.even;
+    return want < iv[0] ? iv[0] - want : (want > iv[1] ? want - iv[1] : 0);
+  };
+  /* What the image is asking for, as dark coverage of a tile, brought into the
+   * band the selected motifs can reach. Clamping rather than stretching: the
+   * band covers most of the range a black-and-white picture asks for, so the
+   * honest thing is to keep tones that fit exactly and give up only the extremes
+   * - stretching every tone to fill the band would distort the whole picture to
+   * rescue its darkest and lightest few percent. */
+  function ask(meanLuma, b) {
+    const want = P.invert ? meanLuma : 1 - meanLuma;
+    return clamp(want, b.lo, b.hi);
+  }
+  const wantDark = (mean) => P.invert ? mean : 1 - mean;
+
+  /* Mean and spread of the ask over the whole sampled image, reported so the
+   * clamping above can be read against the picture. */
+  function imageTone(im) {
+    const W = im.w + 1, w = im.w, h = im.h;
+    const a = h * W + w;
+    const s1 = im.sat[a], s2 = im.sat2[a], area = w * h;
+    const mean = s1 / area;
+    const std = Math.sqrt(Math.max(0, s2 / area - mean * mean));
+    return { mean, std, lo: clamp(mean - 2 * std, 0, 1), hi: clamp(mean + 2 * std, 0, 1) };
+  }
+
+  /* Depth is capped by how large a lattice cell actually is in export pixels: a
+   * motif smaller than ~12 px is mush, so the quadtree stops before it gets
+   * there. The cap uses the EXPORT size, not the preview size, so the structure
+   * on screen is the structure in the file. */
+  function maxDepth(L) {
+    const [fw, fh] = app.framePx();
+    const pxPerUnit = Math.max(fw / L.cols, fh / L.rows);
+    const bySize = Math.floor(Math.log2(Math.max(1, pxPerUnit / PHOTO_MIN_PX)));
+    return clamp(Math.min(P.depth, bySize), 0, PHOTO_MAX_DEPTH);
+  }
+
+  /* The tiling. Two rules decide whether a cell splits:
+   *
+   *   detail  - the tone still varies inside the cell more than 'smoothness'
+   *             allows, so split to follow the image;
+   *   tone    - staying here would put the cell on a parity whose coverage band
+   *             is further from the tone than the parity one level down, so
+   *             split to land on the right band. This is bounded by
+   *             PHOTO_TONE_DITHER so that a mid-tone area becomes a halftone mix
+   *             rather than exploding into the deepest tiles everywhere.
+   *
+   * Engine contract: 'in' = lay one tile here and stop, 'edge' = split. */
+  function build(L) {
+    const im = tables();
+    if (!im) return [];
+    const st = app.state();
+    const asked = maxDepth(L);
+    const sig = [
+      'photo', L.cols, L.rows, asked, P.flatness, P.contrast, P.invert ? 1 : 0,
+      app.motifPool().join(','), im.w + 'x' + im.h, P.name, st.format, st.res
+    ].join('|');
+    if (P.sig === sig && P.tiles) return P.tiles;
+
+    const map = makeMap(im, L);
+    const flat = clamp(P.flatness, 0, 40) / 100;
+    const b = bands();
+    const tone = imageTone(im);
+
+    let maxD = asked, tiles;
+    for (;;) {
+      const region = (x0, y0, x1, y1) => {
+        const d = Math.round(-Math.log2(x1 - x0));      // cell depth, 0 at a lattice cell
+        if (d >= maxD) return 'in';
+        const s = stats(im, map, x0, y0, x1, y1);
+        if (s.std > flat) return 'edge';
+        const want = ask(s.mean, b);
+        if (d < PHOTO_TONE_DITHER && bandError(want, d, b) > bandError(want, d + 1, b)) {
+          return 'edge';                                  // flip parity for the tone
+        }
+        return 'in';
+      };
+      tiles = [];
+      for (let j = 0; j < L.rows; j++) {
+        for (let i = 0; i < L.cols; i++) {
+          for (const t of TR.fillTiling(region, i, j, 1, maxD)) tiles.push(t);
+        }
+      }
+      if (tiles.length <= app.maxLatticeTiles() || maxD <= 0) break;
+      maxD--;               // over budget: coarsen the whole tiling one level
+    }
+    P.sig = sig; P.tiles = tiles; P.map = map; P.depthUsed = maxD;
+    P.bands = b; P.tone = tone;
+    return tiles;
+  }
+
+  /* Motif choice: among the motifs the user selected, take those whose coverage
+   * AT THIS CELL'S PARITY is within a small slack of the best match and pick one
+   * at random. Exact matching alone bands, because several tones map to the same
+   * motif. Tiles are visited in a fixed order, so the pattern is stable across
+   * redraws and for a given seed - same convention as the Generator's pool. */
+  function pickerFor(tiles) {
+    const im = tables();
+    if (!im || !P.map) return () => TR.connIdxByName('/');
+    const pool = app.motifPool();
+    const b = P.bands || bands();
+    const tone = P.tone || imageTone(im);
+    const rnd = TR.mulberry32(TR.seedFromString(
+      app.state().seed + '\u0001photo:' + pool.join(',')));
+    const key = (t) => t.x + ',' + t.y + ',' + t.s;
+    const map = new Map();
+    const sorted = tiles.slice().sort(
+      (a, b2) => (a.x - b2.x) || (a.y - b2.y) || (a.s - b2.s));
+    for (const t of sorted) {
+      const depth = TR.tileDepth(t);
+      const want = ask(stats(im, P.map, t.x, t.y, t.x + t.s, t.y + t.s).mean, b);
+      let best = Infinity;
+      for (const m of pool) best = Math.min(best, Math.abs(darkOf(m, depth) - want));
+      const near = pool.filter((m) => Math.abs(darkOf(m, depth) - want) <= best + INK_JITTER);
+      map.set(key(t), TR.connIdxByName(near[Math.floor(rnd() * near.length) % near.length]));
+    }
+    const fallback = TR.connIdxByName(pool[0]);
+    return (depth, t) => {
+      const v = map.get(key(t));
+      return (v === undefined) ? fallback : v;
+    };
+  }
+
+  /* Tone diagnostics for the QA harness: what each tile covers versus what the
+   * image asked for, plus the correlation between the two. 'want' is the raw ask
+   * and 'target' the ask after the stretch, so a harness can measure fidelity
+   * against the picture itself and consistency against the model. */
+  function report() {
+    const im = tables();
+    if (!im || !P.tiles || !P.map) return null;
+    const b = P.bands || bands();
+    const tone = P.tone || imageTone(im);
+    const rows = [];
+    for (const t of P.tiles) {
+      const s = stats(im, P.map, t.x, t.y, t.x + t.s, t.y + t.s);
+      const raw = wantDark(s.mean);
+      const want = ask(s.mean, b);
+      const depth = TR.tileDepth(t);
+      let motif = pool0(), bestErr = Infinity;
+      for (const m of app.motifPool()) {
+        const err = Math.abs(darkOf(m, depth) - want);
+        if (err < bestErr) { bestErr = err; motif = m; }
+      }
+      rows.push({
+        x: t.x, y: t.y, s: t.s, depth, motif, want, raw,
+        have: darkOf(motif, depth), err: bestErr, std: s.std,
+        bandError: bandError(want, depth, b)
+      });
+    }
+    const n = rows.length;
+    if (!n) return null;
+    let sumErr = 0, worst = 0, sumBand = 0, mx = 0, my = 0, mraw = 0;
+    for (const r of rows) {
+      sumErr += r.err; worst = Math.max(worst, r.err); sumBand += r.bandError;
+      mx += r.want; my += r.have; mraw += r.raw;
+    }
+    mx /= n; my /= n; mraw /= n;
+    /* Two correlations: against the stretched ask (does the tab do what it says)
+     * and against the picture's own tone (does the result read as the picture). */
+    let sxy = 0, sxx = 0, syy = 0, sxyRaw = 0, sxxRaw = 0;
+    for (const r of rows) {
+      sxy += (r.want - mx) * (r.have - my);
+      sxx += (r.want - mx) * (r.want - mx);
+      syy += (r.have - my) * (r.have - my);
+      sxyRaw += (r.raw - mraw) * (r.have - my);
+      sxxRaw += (r.raw - mraw) * (r.raw - mraw);
+    }
+    const corr = (sxx > 0 && syy > 0) ? sxy / Math.sqrt(sxx * syy) : 0;
+    const corrRaw = (sxxRaw > 0 && syy > 0) ? sxyRaw / Math.sqrt(sxxRaw * syy) : 0;
+    const sizes = {};
+    for (const r of rows) sizes[r.s.toFixed(6)] = (sizes[r.s.toFixed(6)] || 0) + 1;
+    return {
+      tiles: n, depthUsed: P.depthUsed, depthAsked: maxDepth(app.lattice()),
+      meanErr: sumErr / n, meanBandErr: sumBand / n, worstErr: worst,
+      corr, corrRaw, wantMean: mx, rawMean: mraw, haveMean: my,
+      bands: b, tone: tone, sizeHistogram: sizes,
+      sample: rows.slice(0, 6)
+    };
+  }
+  function pool0() { const p = app.motifPool(); return p[0] || '/'; }
+
+  /* Quadtree legality, checked on the tile list itself: sizes are powers of two
+   * that never shrink by more than half in one step, no duplicates, everything
+   * inside the lattice, and the tiles cover the frame exactly (the sum of their
+   * areas is the frame area) - which is the whole point of the frame work. */
+  function audit(L) {
+    const tiles = P.tiles || [];
+    const problems = [];
+    let area = 0;
+    const seen = new Set();
+    const levels = new Set();
+    for (const t of tiles) {
+      const k = t.x + ',' + t.y + ',' + t.s;
+      if (seen.has(k)) problems.push('duplicate tile ' + k);
+      seen.add(k);
+      const d = TR.tileDepth(t);
+      levels.add(d);
+      if (!isFinite(d) || Math.abs(t.s - Math.pow(2, -d)) > 1e-9)
+        problems.push('tile size/depth mismatch ' + k);
+      if (t.x < -1e-9 || t.y < -1e-9 ||
+        t.x + t.s > L.cols + 1e-9 || t.y + t.s > L.rows + 1e-9)
+        problems.push('tile outside the frame ' + k);
+      area += t.s * t.s;
+    }
+    const frame = L.cols * L.rows;
+    if (Math.abs(area - frame) > 1e-6 * frame)
+      problems.push('coverage gap: tiles cover ' + area.toFixed(6) + ' of ' + frame);
+    const ds = Array.from(levels).sort((a, b) => a - b);
+    for (let i = 1; i < ds.length; i++) {
+      if (ds[i] - ds[i - 1] > 1) problems.push('depth jump ' + ds[i - 1] + ' -> ' + ds[i]);
+    }
+    return { problems, area, frame, depths: ds, count: tiles.length };
+  }
+
+  function fileNameStub() {
+    const base = String(P.name || '').replace(/\.[^.]*$/, '').replace(/[^A-Za-z0-9]+/g, '');
+    return base.slice(0, 24) || 'photo';
+  }
+
+  /* ---------- panel wiring (this file owns the Photo controls) ---------- */
+  function wireUI() {
+    const $ = (id) => document.getElementById(id);
+    const bindRange = (id, key, outId, suffix) => {
+      const el = $(id);
+      if (!el) return;
+      el.value = String(P[key]);
+      const out = $(outId);
+      const paint = () => { if (out) out.textContent = P[key] + (suffix || ''); };
+      el.addEventListener('input', () => { P[key] = +el.value; paint(); app.onChange(); });
+      paint();
+    };
+    const inv = $('chkPinvert');
+    if (inv) {
+      inv.checked = P.invert;
+      inv.addEventListener('change', () => { P.invert = inv.checked; app.onChange(); });
+    }
+    const file = $('inPhoto');
+    if (file) {
+      file.addEventListener('change', () => {
+        const f = file.files && file.files[0];
+        if (f) loadFile(f);
+      });
+    }
+    const pick = $('btnPhotoPick');
+    if (pick && file) pick.addEventListener('click', () => file.click());
+
+    /* Dropping the image on the canvas is the common case; hunting for the file
+     * input in the panel is not. Pasting from the clipboard works too. */
+    const stage = $('stage');
+    if (stage) {
+      stage.addEventListener('dragover', (e) => { e.preventDefault(); });
+      stage.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f && /^image\//.test(f.type)) loadFile(f);
+      });
+    }
+    document.addEventListener('paste', (e) => {
+      if (app.tab() !== 'photo') return;
+      const items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      for (const it of items) {
+        if (it.type && /^image\//.test(it.type)) {
+          const f = it.getAsFile();
+          if (f) { e.preventDefault(); loadFile(f); }
+          return;
+        }
+      }
+    });
+  }
+
+  /* Called on every redraw so the readouts match what is on screen: the sampled
+   * image, the tone bands the current motif selection can reach, and the depth
+   * the quadtree actually used. */
+  function syncLabel() {
+    const el = document.getElementById('photoName');
+    if (el && P.image) {
+      const b = bands();
+      el.textContent = P.name + ' \u2014 ' + P.image.w + '\u00d7' + P.image.h +
+        ' sampled \u00b7 reachable tone ' + b.lo.toFixed(2) + '\u2013' + b.hi.toFixed(2) +
+        ' (plain ' + b.even[0].toFixed(2) + '\u2013' + b.even[1].toFixed(2) +
+        ', inverted ' + b.odd[0].toFixed(2) + '\u2013' + b.odd[1].toFixed(2) + ')';
+    } else if (el) {
+      el.textContent = '';
+    }
+    const out = document.getElementById('outPdepth');
+    if (out) out.textContent = P.depth + ' levels';
+    const outFlat = document.getElementById('outPflat');
+    if (outFlat) outFlat.textContent = P.flatness + '%';
+    const outCon = document.getElementById('outPcon');
+    if (outCon) outCon.textContent = P.contrast + '%';
+    const base = document.getElementById('inBase');
+    if (base) {
+      const bs = app.baseScale();
+      base.max = String(bs.max);
+      base.value = String(clamp(P.base, 1, bs.max));
+      const lbl = document.getElementById('outBase');
+      if (lbl) lbl.textContent = '\u00d7' + app.lattice().t;
+    }
+  }
+
+  app.registerTab('photo', {
+    label: 'Photo',
+    params: 'photoParams',
+    prefix: 'truchetphoto_',
+    motifs: true,
+    ready: () => !!P.image,
+    emptyMessage: 'photo tab: choose, drop or paste an image \u2014 it is read locally and never uploaded',
+    tiles: build,
+    picker: pickerFor,
+    onShow: wireUI,
+    onRedraw: syncLabel
+  });
+
+  /* Hooks for the QA harness (dev/_photoqa.py drives a synthetic image through
+   * exactly this code path, not a copy of it). */
+  app.hooks.photo = {
+    loadFile, adopt, build, pickerFor, report, audit, tables, stats,
+    makeMap, maxDepth, bands, darkOf, bandError, wantDark, ask, imageTone,
+    fileNameStub, wireUI, syncLabel,
+    hasImage: () => !!P.image,
+    state: () => P,
+    sampleEdge: PHOTO_SAMPLE_EDGE, minPx: PHOTO_MIN_PX,
+    maxDepthLimit: PHOTO_MAX_DEPTH, toneDither: PHOTO_TONE_DITHER
+  };
 })();
 
 </script>

@@ -128,3 +128,8 @@ body:not(.panel-hidden) #showBtn { display: none; }
   background: #5a1f1f; color: #ffd9d9; padding: 8px 14px; border-radius: 8px;
   display: none; z-index: 20;
 }
+#err.show { display: block; }
+input[type="file"] { font-size: 10.5px; flex: 1; min-width: 0; padding: 4px 6px; }
+input[type="checkbox"] { width: auto; margin-right: 6px; accent-color: var(--accent); }
+label.check { display: flex; align-items: center; color: var(--panel-fg); }
+#photoName { font-family: ui-monospace, Consolas, monospace; }

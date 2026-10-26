@@ -107,6 +107,45 @@ const Truchet = (function () {
     'tn', 'te', 'ts', 'tw'
   ];
 
+  /* Fraction of a tile's square covered by its dark circuits, measured from this
+   * engine's own geometry (dev/_inkqa.py rasterizes each tile and counts sample
+   * points inside its circuits -- the same polygons renderTiling composites).
+   * The Photo tab uses it to choose the motif whose tone matches a region of an
+   * image; verified against the browser's own fill in dev/_inkqa2.py. */
+  /* Ink: the fraction of the tile's own square this engine paints DARK for a
+   * motif at even depth over a light ground, and 1 - ink at odd depth where the
+   * two circuit colour classes swap (Carlson's InvertMotif swaps a motif's
+   * colours; SquareArcTile is circuits only and fills no ground).
+   *
+   * Measured, not modelled. dev/inktest.html renders each motif alone at 240x240
+   * and counts pixels INSIDE THE TILE SQUARE: fitTransform fits a tile including
+   * its wings, so counting the whole canvas understates every fraction - an early
+   * version of this harness did exactly that and every number in this table was
+   * too small by roughly the canvas-to-square area ratio.
+   *
+   * The same harness also renders each motif on a grey ground and counts what
+   * changed, which measures how much of the square the tile paints at all: 0.98
+   * to 0.99 for all 24 motifs, at either parity. Two things follow, and inktest
+   * checks both. A tile's ink and its inverted ink add up to that coverage - the
+   * two circuit classes partition the area the tile paints - so inverted coverage
+   * is 1 - ink to within the 1-2% a tile leaves untouched; and a tile in a
+   * multi-scale tiling effectively repaints its own square rather than overlaying
+   * what was drawn below it, so per-tile tone control is real. dev/_inkqa.py
+   * re-runs the measurement and gates this table against it.
+   */
+  const MOTIF_INK = {
+    '+.': 0.1729,
+    fnw: 0.3489, fne: 0.3491, fse: 0.3490, fsw: 0.3489,
+    yn: 0.4030, ye: 0.3973, ys: 0.4029, yw: 0.3969,
+    p: 0.4101,
+    '-': 0.4292, '|': 0.4151,
+    '/': 0.5250, '\\': 0.5252,
+    tn: 0.5417, te: 0.5347, ts: 0.5417, tw: 0.5347,
+    '+': 0.5588,
+    anw: 0.5629, ane: 0.5629, ase: 0.5629, asw: 0.5631,
+    'x.': 0.6543
+  };
+
   /* ---------- circuits (Carlson's SquareConnectionCircuits) ----------
    * Walk from every starting point 1..8: first step internal, then
    * alternate external k->k+1 (cyclic) and internal. Keep the FIRST
@@ -493,7 +532,7 @@ const Truchet = (function () {
 
   return {
     PPS, NP, PT, SIDE, INWARD, coordinate,
-    CONNECTION_SETS, TILE_NAMES, MOTIF_NAMES, NAMED_TILES,
+    CONNECTION_SETS, TILE_NAMES, MOTIF_NAMES, MOTIF_INK, NAMED_TILES,
     connIdxByName, nameForConnIdx,
     mulberry32, seedFromString, randSeed,
     traceCircuits, circuitSegments, circuitPolygon, sampleArc, getTile, tileDepth,

@@ -8,14 +8,39 @@ Multi-Scale Truchet Patterns (christophercarlson.com). Vanilla JS + canvas.
 Plan: 5 tabs (Generator, Fill, Photo, Composer, Mandala) on one engine — the
 Mandala one was built and then removed at the user's request, see below.
 
-## Status (Generator solid; Mandala tried and removed)
+## Status (Generator + Photo solid; Mandala tried and removed)
 - ENGINE (`src/engine.js`) = literal port of Carlson's Wolfram package
   (`mstp/MultiScaleTruchetPatterns.wl`). Validated against Python oracle
   `dev/port.py` via `dev/gold.json` — `node dev/check_gold.js` → 24/24 PASS.
-- UI: `index.html` (dev page, loads `src/engine.js` + `src/app.js` directly) +
-  `src/app.js`. Live tab: **Generator** (Fill / Photo / Composer are still
-  placeholders). `node build.js` → `dist/truchet.html` (single file, ~46 KB).
+- UI: `index.html` (dev page, loads `src/engine.js` + `src/app.js` +
+  `src/photo.js` directly) + `src/app.js`, which is a tab shell: a tab registers
+  itself with `registerTab(key, def)` and supplies `motifs`, `ready()`,
+  `tiles(lattice)`, `picker(tiles)`, optional `onShow`/`onRedraw`. Live tabs:
+  **Generator** and **Photo** (Fill / Composer are still placeholders).
+  `node build.js` -> `dist/truchet.html` (single file, ~81 KB).
   Always open `index.html` with a cache-buster (`?v=<commit>`) when verifying.
+- Photo tab (`src/photo.js`): Carlson's quadtree multi-scale subdivision driven
+  by image luminance variance, with motif choice by measured ink and cell parity
+  deciding light vs dark. Gates: `python dev/_photoqa.py` -> quadtree audit
+  clean, tile coverage exactly the frame area, determinism PASS, Generator<->
+  Photo round trip PASS, no image data in the share link, mean tone error 0.034,
+  tone correlation 0.91 against pixels sampled from the real render.
+  The image is decoded locally and never enters the hash, so a Photo link reopens
+  asking for the picture again.
+- Ink table (`MOTIF_INK` in `src/engine.js`) is measured, not modelled, and was
+  **wrong until recently**: `dev/inktest.html` first counted dark pixels over the
+  whole canvas, but `fitTransform` fits a tile *including its wings* (s/3
+  overshoot), so every fraction was understated by the canvas-to-square area
+  ratio and the Photo tab's tone gates failed (correlation 0.57, mean error 0.296).
+  Counted inside the tile square, ink runs 0.17-0.65 plain, and the two circuit
+  colour classes cover 0.98-0.99 of the square - so inverted coverage is 1 - ink
+  and a tile repaints its own square rather than overlaying what is below it,
+  which is what makes per-tile tone control work at all. Carlson's own renderer
+  matches: `SquareArcTile` is circuits only, no ground rectangle, and
+  `InvertMotif` swaps a motif's colours. An earlier `ground()` hook that filled
+  odd-depth tiles with dark was therefore both unfaithful and the thing wrecking
+  the composite; it is gone. `python dev/_inkqa.py` re-measures and gates the
+  table plus both identities.
 - Motif picker = **the 15 tiles Carlson shows in motifs.png**, in his grid
   order, 4 columns + a `mix` cell (see "Which 15 tiles, measured" below).
   Verified live: `python dev/_appqa.py <app screenshot> 0 0 600 2000` → 15/15
@@ -258,7 +283,7 @@ typed/old links and hand-built QA queries were affected. `readHash()` in
    and reproduce it headlessly — do not guess.
 2. Mandala: REMOVED at the user's request (see the "built, verified, then
    REMOVED" section). Do not re-add it unless the user asks for it again.
-3. Phase 2: Fill + Photo tabs (README plan) on the same engine.
+3. Phase 2: Fill tab (README plan) on the same engine; Photo tab is done.
 4. Possible framing follow-ups: per-format saved presets, JPEG/WebP export, and
    multi-monitor sizes (e.g. 5120 x 1440) via the custom W x H row.
 5. Rendering speed has never been measured; the user doubted it at ×4 density
@@ -275,7 +300,8 @@ typed/old links and hand-built QA queries were affected. `readHash()` in
 - The app credits Carlson visibly (`#credit`, bottom of the panel) and
   `src/engine.js` carries the credit in its file header, so the single-file
   `dist/truchet.html` carries it too. Nothing from Carlson's files is inlined by
-  `build.js` — it inlines `src/style.css`, `src/engine.js` and `src/app.js` only.
+  `build.js` — it inlines `src/style.css`, `src/engine.js`, `src/app.js` and
+  `src/photo.js` only.
 
 ## Rendering performance (measured 2026-10, was never measured before)
 

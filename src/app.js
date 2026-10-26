@@ -16,9 +16,69 @@
     pad: 2,             // margin percent
     format: '1:1',      // frame format key, or 'custom'
     res: 2048,          // long edge in px when a preset format is used
-    fw: 3840, fh: 2160  // explicit frame size when format === 'custom'
+    fw: 3840, fh: 2160, // explicit frame size when format === 'custom'
+    tab: 'gen'          // 'gen' | 'photo' (other tabs register themselves)
   };
   let S = Object.assign({}, DEFAULTS);
+
+  /* ================= tab shell =================
+   * A tab can own its params block, its motif picker, its export-name prefix,
+   * its own way of producing tiles, and (optionally) a ground painted under the
+   * tiles. Generator lives here; Photo lives in src/photo.js and registers
+   * itself through window.TruchetApp, which keeps that tab's state out of the
+   * share link entirely.
+   *
+   *   def.ready()          gate: false -> the canvas shows emptyMessage only
+   *   def.tiles(lattice)   produce the tile list for a lattice
+   *   def.picker(tiles)    (depth, tile) -> connection index
+   *   def.params, def.prefix, def.motifs, def.emptyMessage, def.onShow
+   *   def.onRedraw()       called after every redraw, for the tab's own readouts
+   */
+  const TABS = {
+    gen: {
+      label: 'Generator', params: 'genParams', prefix: 'truchet_',
+      motifs: true, ready: () => true, emptyMessage: ''
+    }
+  };
+  function registerTab(key, def) {
+    TABS[key] = Object.assign(
+      { label: key, params: null, prefix: 'truchet_', motifs: true,
+        ready: () => true, emptyMessage: '', onShow: null, tiles: null,
+        picker: null }, def);
+    const btn = document.querySelector('#tabs button[data-tab="' + key + '"]');
+    if (btn) {
+      btn.disabled = false;
+      btn.title = '';
+      btn.addEventListener('click', () => setTab(key));
+    }
+    /* A shared link can open straight into a tab whose script has only just
+     * registered; re-apply so panel and canvas match the hash. */
+    if (S.tab === key) applyTab();
+  }
+  function tabDef() { return TABS[S.tab] || TABS.gen; }
+  function applyTab() {
+    const def = tabDef();
+    for (const b of document.querySelectorAll('#tabs button[data-tab]'))
+      b.classList.toggle('active', b.dataset.tab === S.tab);
+    document.title = 'Truchet Studio \u2014 ' + def.label;
+    if (def.onShow) def.onShow();
+    refreshParamVisibility();
+    renderMain();
+    updateMotifSel();
+  }
+  function setTab(key) {
+    if (!TABS[key]) return;
+    S.tab = key;
+    applyTab();
+  }
+  function showError(msg) {
+    const el = document.getElementById('err');
+    if (el) { el.textContent = msg; el.className = 'show'; }
+  }
+  function clearError() {
+    const el = document.getElementById('err');
+    if (el) { el.textContent = ''; el.className = ''; }
+  }
 
   /* Framing model: a frame is a target pixel size (desktop wallpaper, square
    * social post, phone wallpaper...).  The tiling is generated FOR that frame:
@@ -52,7 +112,7 @@
   const HASH_KEYS = {
     tiling: 't', n: 'n', splits: 'sp',
     maxd: 'md', seed: 'sd', motifs: 'm', pal: 'p', c1: 'c1', c2: 'c2',
-    bg: 'bg', pad: 'pd', format: 'F', res: 'rs', fw: 'fw', fh: 'fh'
+    bg: 'bg', pad: 'pd', format: 'F', res: 'rs', fw: 'fw', fh: 'fh', tab: 'tb'
   };
   function writeHash() {
     const p = new URLSearchParams();
@@ -173,7 +233,10 @@
   }
 
   /* ================= tiling + pickTile ================= */
-  function buildTiling() { return tilingFor(lattice()); }
+  function buildTiling() {
+    const def = tabDef();
+    return def.tiles ? def.tiles(lattice()) : tilingFor(lattice());
+  }
   /* The motif cells form a pool: one cell = that motif everywhere, several
    * cells (ctrl+click) = one of them chosen at random per tile, exactly like
    * 'mix' but restricted to the chosen subset. 'mix' means all 15. */
@@ -244,7 +307,7 @@
     const wx0 = (x0 + x1) / 2 - winW / 2, wy0 = (y0 + y1) / 2 - winH / 2;
     cx.setTransform(s, 0, 0, -s, -s * wx0, h + s * wy0);
     T.renderTiling(cx, tiles, {
-      pickTile: buildPicker(tiles),
+      pickTile: (tabDef().picker || buildPicker)(tiles),
       palette: buildPalette(tiles),
       bounds: [wx0, wy0, wx0 + winW, wy0 + winH]
     });
@@ -279,9 +342,24 @@
       lastDpr = dpr;
       paintPreviews();
     }
+    const def = tabDef();
+    if (!def.ready()) {
+      /* Nothing to draw yet (Photo with no image chosen): paint just the
+       * ground, so the stage still shows the frame and its real colour. */
+      const cx = canvas.getContext('2d');
+      cx.setTransform(1, 0, 0, 1, 0, 0);
+      cx.fillStyle = (S.pal === 'custom') ? S.bg
+        : (T.PALETTES[S.pal] || T.PALETTES.bw)[1];
+      cx.fillRect(0, 0, w, h);
+      const info = document.getElementById('frameInfo');
+      if (info) info.textContent = def.emptyMessage;
+      if (def.onRedraw) def.onRedraw();
+      return;
+    }
     const tiles = buildTiling();
     drawScene(canvas, tiles, w, h);
     updateFrameInfo(tiles);
+    if (def.onRedraw) def.onRedraw();   // a tab reports its own state here
   }
 
   /* ================= export ================= */
@@ -300,8 +378,8 @@
     const isMix = pool.length === T.MOTIF_NAMES.length &&
       pool.every((m, i) => m === T.MOTIF_NAMES[i]);
     const motif = isMix ? 'mix' : pool.map(sanitizeMotif).join('-');
-    return 'truchet_' + S.tiling + sizePart + '_' + S.seed + '_m' + motif +
-      '_p' + pal + '_' + w + 'x' + h + '.png';
+    return (tabDef().prefix || 'truchet_') + S.tiling + sizePart + '_' + S.seed +
+      '_m' + motif + '_p' + pal + '_' + w + 'x' + h + '.png';
   }
   function exportPNG() {
     const [w, h] = framePx();
@@ -341,11 +419,17 @@
   }
   function refreshParamVisibility() {
     const show = (id, on) => $(id).style.display = on ? '' : 'none';
-    show('rowN', true);
+    const def = tabDef();
+    /* Each tab owns its params block; Frame / Color / Output are shared. */
+    show('genParams', def.params === 'genParams');
+    for (const [key, t] of Object.entries(TABS)) {
+      if (t.params && t.params !== 'genParams') show(t.params, key === S.tab);
+    }
+    show('motifSect', def.motifs !== false);
     show('rowFrameSize', S.format === 'custom');
     show('rowRes', S.format !== 'custom');
     $('lblRes').textContent = 'long edge';
-    show('rowRand', S.tiling === 'rand');
+    show('rowRand', def.params === 'genParams' && S.tiling === 'rand');
     show('rowCustomPal', S.pal === 'custom');
     /* The density range depends on the frame: a 1:1 frame can carry far more
      * tiles than a 21:9 one before the tile caps bite. Clamping here keeps the
@@ -355,6 +439,16 @@
     S.n = clamp(Math.round(S.n) || 1, 1, maxT);
     $('inN').value = S.n;
     $('outN').textContent = '×' + lattice().t;
+  }
+  function initTabs() {
+    /* Tabs not yet registered (Photo registers itself after app.js) stay as they
+     * are in the markup: disabled placeholders. registerTab() enables its own. */
+    for (const b of document.querySelectorAll('#tabs button[data-tab]')) {
+      if (!TABS[b.dataset.tab]) continue;
+      b.disabled = false;
+      b.classList.toggle('active', b.dataset.tab === S.tab);
+      b.addEventListener('click', () => setTab(b.dataset.tab));
+    }
   }
   function onChange() {
     writeHash(); refreshParamVisibility(); renderMain(); updateMotifSel();
@@ -388,6 +482,16 @@
 
   /* export controls */
   $('btnExport').addEventListener('click', () => exportPNG());
+
+  /* base lattice for the Photo tab: same lattice the Generator uses, clamped to
+   * what the frame can carry before the quadtree even starts subdividing */
+  function baseScale() {
+    const maxT = Math.max(1, Math.min(latticeMaxT(), Math.floor(
+      Math.sqrt(MAX_LATTICE_TILES / (frameRatio()[0] * frameRatio()[1])))));
+    const v = clamp(Math.round(S.n) || 1, 1, maxT);
+    return { value: v, max: maxT };
+  }
+  function setBaseScale(v) { S.n = +v || 1; onChange(); }
 
   /* motif picker: the 15 tiles from Carlson's motifs figure, plus a mix cell */
   const grid = $('motifGrid');
@@ -470,6 +574,7 @@
 
   /* ================= boot ================= */
   readHash();
+  initTabs();
   // tiles outside Carlson's 15 (old links) fall back to the default motif
   S.motifs = (S.motifs || []).filter(
     (m) => m === 'mix' || T.MOTIF_NAMES.includes(m));
@@ -485,4 +590,16 @@
     cancelAnimationFrame(rAF);
     rAF = requestAnimationFrame(paintPreviews);
   });
+  window.TruchetApp = {
+    hooks: {},                       // tabs fill these in: hooks.photo = {...}
+    registerTab,
+    state: () => S,
+    frameRatio, framePx, lattice, latticeMaxT,
+    maxLatticeTiles: () => MAX_LATTICE_TILES,
+    motifPool,
+    buildTiling: buildTiling,           // dev harnesses: the tab shell's tiling path
+    tab: () => S.tab,
+    setTab, setBaseScale, baseScale,
+    showError, clearError, onChange
+  };
 })();
