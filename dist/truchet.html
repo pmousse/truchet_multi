@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Truchet Studio — Generator</title>
+<style>
+:root {
+  --panel-bg: #14151a;
+  --panel-fg: #d8d9de;
+  --panel-dim: #8b8d96;
+  --panel-line: #26272e;
+  --accent: #e8b13c;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  font: 13px/1.45 system-ui, "Segoe UI", sans-serif;
+  color: var(--panel-fg);
+  background: #000;
+  overflow: hidden;
+}
+#stage { position: absolute; inset: 0; }
+#mainCanvas { display: block; width: 100%; height: 100%; }
+
+/* ---------- panel ---------- */
+#panel {
+  position: absolute; top: 0; left: 0; bottom: 0; width: 300px;
+  background: var(--panel-bg);
+  border-right: 1px solid var(--panel-line);
+  display: flex; flex-direction: column;
+  transition: transform .25s ease;
+  z-index: 10;
+}
+body.panel-hidden #panel { transform: translateX(-100%); }
+#panelHead {
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--panel-line);
+  display: flex; align-items: baseline; gap: 10px;
+}
+#panelHead h1 { font-size: 15px; margin: 0; letter-spacing: .04em; }
+#panelHead .sub { color: var(--panel-dim); font-size: 11px; }
+#tabs { display: flex; gap: 2px; padding: 6px 8px 0; }
+#tabs button {
+  flex: 1; padding: 6px 2px; font-size: 11px;
+  background: none; border: 1px solid transparent; border-bottom: none;
+  color: var(--panel-dim); cursor: pointer; border-radius: 5px 5px 0 0;
+}
+#tabs button.active {
+  color: var(--accent);
+  border-color: var(--panel-line);
+  background: #1b1c22;
+}
+#tabs button:disabled { opacity: .45; cursor: default; }
+#panelBody { overflow-y: auto; padding: 10px 14px 16px; flex: 1; }
+.row { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+.row.wrap { flex-wrap: wrap; }
+label { color: var(--panel-dim); font-size: 11px; }
+input, select, button {
+  font: inherit; color: var(--panel-fg);
+  background: #1d1e25; border: 1px solid var(--panel-line);
+  border-radius: 5px; padding: 5px 8px;
+}
+input[type="number"] { width: 64px; }
+input[type="text"] { width: 110px; }
+input[type="range"] { flex: 1; accent-color: var(--accent); }
+input[type="color"] { width: 42px; height: 28px; padding: 2px; }
+select { max-width: 100%; }
+button.action { cursor: pointer; }
+button.primary {
+  background: var(--accent); color: #14151a; border-color: var(--accent);
+  font-weight: 600;
+}
+button:hover { border-color: #3a3c46; }
+button.primary:hover { filter: brightness(1.1); }
+.sect {
+  margin: 12px 0 4px; padding-top: 10px;
+  border-top: 1px solid var(--panel-line);
+  color: var(--panel-dim); font-size: 10.5px;
+  text-transform: uppercase; letter-spacing: .12em;
+}
+#seedRow input { font-family: ui-monospace, Consolas, monospace; }
+#motifGrid {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px;
+  margin-top: 6px;
+}
+#motifGrid canvas {
+  width: 100%; aspect-ratio: 1; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--panel-line); background: #fff;
+}
+#motifGrid canvas.sel { border-color: var(--accent); border-width: 2px; }
+#motifGrid .mix {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; background: #23242c; color: var(--panel-dim);
+}
+#exportRow { display: flex; flex-wrap: wrap; gap: 6px; }
+#fileName {
+  font-size: 10.5px; color: var(--panel-dim);
+  font-family: ui-monospace, Consolas, monospace;
+  word-break: break-all; margin-top: 4px;
+}
+#credit {
+  margin-top: 14px; font-size: 10.5px; color: var(--panel-dim);
+  border-top: 1px solid var(--panel-line); padding-top: 8px;
+}
+#credit a { color: var(--panel-dim); }
+#hideBtn, #showBtn {
+  position: absolute; top: 10px; z-index: 11;
+  background: var(--panel-bg); border: 1px solid var(--panel-line);
+  border-radius: 6px; padding: 6px 9px; cursor: pointer;
+}
+#hideBtn { left: 310px; }
+#showBtn { left: 10px; opacity: .85; }
+body.panel-hidden #hideBtn { display: none; }
+body:not(.panel-hidden) #showBtn { display: none; }
+#err {
+  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+  background: #5a1f1f; color: #ffd9d9; padding: 8px 14px; border-radius: 8px;
+  display: none; z-index: 20;
+}
+
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="mainCanvas"></canvas></div>
+<button id="showBtn">☰ Truchet Studio</button>
+<button id="hideBtn">☰ hide</button>
+<div id="err"></div>
+
+<aside id="panel">
+  <div id="panelHead">
+    <h1>Truchet Studio</h1><span class="sub">multi-scale truchet patterns</span>
+  </div>
+  <nav id="tabs">
+    <button class="active">Generator</button>
+    <button disabled title="coming soon">Fill</button>
+    <button disabled title="coming soon">Photo</button>
+    <button disabled title="coming soon">Composer</button>
+    <button disabled title="coming soon">Mandala</button>
+  </nav>
+  <div id="panelBody">
+
+    <div class="row" id="seedRow">
+      <label>seed</label><input type="text" id="inSeed" spellcheck="false">
+      <button class="action" id="btnNewSeed" title="random new seed">🎲 new</button>
+      <button class="action" id="btnCopyLink" title="copy shareable URL">copy link</button>
+    </div>
+
+    <div class="sect">Tiling</div>
+    <div class="row"><select id="selTiling">
+      <option value="chk">checkerboard</option>
+      <option value="grid">grid</option>
+      <option value="rand">random subdivision</option>
+      <option value="sur">surround</option>
+      <option value="off">offset surround</option>
+    </select></div>
+    <div class="row" id="rowN"><label>size n</label><input type="number" id="inN" min="1" max="24"></div>
+    <div class="row" id="rowGrid"><label>rows</label><input type="number" id="inRows" min="1" max="24">
+      <label>cols</label><input type="number" id="inCols" min="1" max="24"></div>
+    <div class="row wrap" id="rowRand"><label>splits</label><input type="number" id="inSplits" min="1" max="200">
+      <label>max depth</label><input type="number" id="inMaxd" min="1" max="10"></div>
+    <div class="row" id="rowOff"><label>cols</label><input type="number" id="inOffM" min="1" max="24">
+      <label>rows</label><input type="number" id="inOffN" min="1" max="24"></div>
+
+    <div class="sect">Motif</div>
+    <div id="motifGrid"></div>
+
+    <div class="sect">Color</div>
+    <div class="row"><select id="selPal">
+      <option value="bw">black / white</option>
+      <option value="wb">white / black</option>
+      <option value="ink">ink / cream</option>
+      <option value="night">midnight / parchment</option>
+      <option value="oxide">oxblood / bone</option>
+      <option value="teal">teal / ecru</option>
+      <option value="ultramarine">ultramarine / parchment</option>
+      <option value="forest">forest / bone</option>
+      <option value="slate_ramp">slate / chalk</option>
+      <option value="rainbow_ramp">signal red / off-white</option>
+      <option value="custom">custom depth ramp…</option>
+    </select></div>
+    <div class="row wrap" id="rowCustomPal">
+      <label>scale 0</label><input type="color" id="inC1">
+      <label>max depth</label><input type="color" id="inC2">
+      <label>ground</label><input type="color" id="inBg">
+    </div>
+
+    <div class="sect">Framing</div>
+    <div class="row"><label>margin</label><input type="range" id="inPad" min="0" max="20" step="1"><span id="outPad"></span></div>
+
+    <div class="sect">Export PNG</div>
+    <div class="row wrap" id="exportRow">
+      <select id="selRes">
+        <option value="1024">1K</option>
+        <option value="2048" selected>2K</option>
+        <option value="4096">4K</option>
+      </select>
+      <select id="selAspect">
+        <option value="1">square</option>
+        <option value="1.25">portrait 4:5</option>
+        <option value="0.8">landscape 5:4</option>
+        <option value="1.5">portrait 2:3</option>
+        <option value="0.6667">landscape 3:2</option>
+      </select>
+      <button class="action primary" id="btnExport">export ↓</button>
+    </div>
+    <div id="fileName"></div>
+
+    <div id="credit">
+      Patterns &amp; math: <a href="https://christophercarlson.com/portfolio/multi-scale-truchet-patterns/" target="_blank" rel="noopener">Christopher Carlson</a>
+      — “Multi-Scale Truchet Patterns”, <i>Bridges 2018</i>. This is an independent browser re-implementation.
+    </div>
+  </div>
+</aside>
+
+<script>
+/* ============================================================
+ * Truchet Studio — multi-scale Truchet engine
+ * Literal JavaScript port of Christopher Carlson's
+ * MultiScaleTruchetPatterns.wl  (Mathematica source read directly;
+ * cross-validated against dev/port.py, our Python reference model).
+ * https://christophercarlson.com/portfolio/multi-scale-truchet-patterns/
+ * ============================================================ */
+'use strict';
+
+const Truchet = (function () {
+  /* ---------- constants ---------- */
+  const PPS = 2;                 // connections per side
+  const NP = 8;                  // total connection points
+
+  // Connection points 1..8 counter-clockwise, math coords (y-up), unit tile:
+  // S:1,2  E:3,4  N:6,5 (right->left numbering is 6 then 5)  W:7,8
+  function coordinate(n) {
+    const side = Math.floor((n - 1) / PPS);
+    if (side === 0) return [n / (PPS + 1), 0];
+    if (side === 1) return [1, (n - PPS) / (PPS + 1)];
+    if (side === 2) return [(2 * PPS - n) / (PPS + 1) + 1, 1];
+    return [0, (4 * PPS - n + 1) / (PPS + 1)];
+  }
+  const PT = {};
+  for (let n = 1; n <= NP; n++) PT[n] = coordinate(n);
+  const SIDE = {};
+  for (let n = 1; n <= NP; n++) SIDE[n] = Math.floor((n - 1) / PPS);
+  const INWARD = [[0, 1], [-1, 0], [0, -1], [1, 0]];  // InternalTangent per side
+
+  /* ---------- PRNG ---------- */
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function seedFromString(str) {
+    let h = 1779033703 ^ str.length;
+    for (let i = 0; i < str.length; i++) {
+      h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+      h = (h << 13) | (h >>> 19);
+    }
+    return h >>> 0;
+  }
+  function randSeed(random) {
+    let s = '';
+    for (let i = 0; i < 6; i++) s += Math.floor(random() * 36).toString(36);
+    return s;
+  }
+
+  /* ---------- connection-set enumeration ----------
+   * Reproduces Carlson's AllSquare2ConnectionSets exactly: Nest 4 times
+   * over a LIST of partial sets -> the 24 perfect matchings, in his order,
+   * so named tiles ("/", "fne", "x."...) index identically.
+   */
+  function destinations(i) {
+    const out = [];
+    for (const k of [1, 3, 5, 7]) out.push(((i + k - 1) % 8) + 1);
+    return out;
+  }
+  function stepSet(c) {
+    const used = new Set(c.flat());
+    const left = [];
+    for (let p = 1; p <= 8; p++) if (!used.has(p)) left.push(p);
+    if (!left.length) return [];
+    const p = Math.min(...left);
+    const cand = destinations(p).filter(d => !used.has(d));
+    return cand.map(d => c.concat([[p, d]]));
+  }
+  const CONNECTION_SETS = (function () {
+    let level = [[]];
+    for (let k = 0; k < 4; k++) {
+      const next = [];
+      for (const s of level) next.push(...stepSet(s));
+      level = next;
+    }
+    return level;
+  })();
+
+  // Carlson's SquareTileNameMapping (index into CONNECTION_SETS)
+  const NAMED_TILES = {
+    '+.': 1, 'fnw': 2, 'fne': 3, 'yn': 4, 'tn': 5, '-': 6, 'fse': 7,
+    '/': 8, 'ye': 9, 'anw': 10, 'p': 11, 'ys': 12, 'te': 13, 'ase': 14,
+    '|': 15, '+': 16, 'yw': 17, 'ane': 18, 'x.': 19, 'ts': 20, 'tw': 21,
+    'asw': 22, 'fsw': 23, '\\': 24
+  };
+  const TILE_NAME = {};
+  for (const [name, idx] of Object.entries(NAMED_TILES)) TILE_NAME[idx] = name;
+  const TILE_NAMES = Object.keys(NAMED_TILES).sort(
+    (a, b) => NAMED_TILES[a] - NAMED_TILES[b]);
+
+  /* ---------- circuits (Carlson's SquareConnectionCircuits) ----------
+   * Walk from every starting point 1..8: first step internal, then
+   * alternate external k->k+1 (cyclic) and internal. Keep the FIRST
+   * trace for each circuit (identified by its sorted point set); that
+   * representative starts at the circuit's minimum point.
+   * Color: First[] odd -> white (drawn under), even -> black (on top),
+   * exactly as Carlson's OddQ[First[#]] Select.
+   */
+  function traceCircuits(connections) {
+    const internal = new Map();
+    for (const [a, b] of connections) { internal.set(a, b); internal.set(b, a); }
+    const external = new Map();
+    for (let k = 1; k <= NP; k++) external.set(k, (k % NP) + 1);
+    const all = [];
+    for (let s = 1; s <= NP; s++) {
+      const circuit = [s, internal.get(s)];
+      let internalStep = false;
+      while (circuit[circuit.length - 1] !== circuit[0]) {
+        const last = circuit[circuit.length - 1];
+        circuit.push((internalStep ? internal : external).get(last));
+        internalStep = !internalStep;
+      }
+      all.push(circuit.slice(0, -1));          // Most[circuit]
+    }
+    const seen = new Set();
+    const out = [];
+    for (const c of all) {
+      const key = c.slice().sort((a, b) => a - b).join(',');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(c);
+    }
+    return out;
+  }
+
+  /* ---------- arc geometry (literal ArcPoints port) ----------
+   * Given node descriptors (p1,t1),(p2,t2):
+   *   parallel tangents     -> straight segment
+   *   antiparallel          -> semicircle centered at midpoint
+   *   otherwise             -> elliptical arc centered at the intersection
+   *     of the two tangent LINES, rx=|p1-c| (x semi-axis), ry=|p2-c|
+   *     (y semi-axis), sampled from polar angle a1 to a2 with sweep
+   *     direction set by Sign[cross(t1, p1-c)].
+   * Returns canvas-drawable descriptors: {kind:'line'|'ellipse', ...}.
+   */
+  function vectorAngle(t1, t2) {
+    const d = t1[0] * t2[0] + t1[1] * t2[1];
+    const n1 = Math.hypot(t1[0], t1[1]), n2 = Math.hypot(t2[0], t2[1]);
+    return Math.acos(Math.max(-1, Math.min(1, d / (n1 * n2))));
+  }
+  function arcFromDescriptors(p1, t1, p2, t2) {
+    const va = vectorAngle(t1, t2);
+    const EPS = 2.220446049250313e-16;
+    if (Math.abs(va) < EPS) return { kind: 'line', p1, p2 };
+    let c;
+    if (Math.abs(va - Math.PI) < EPS) {
+      c = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2];
+    } else {
+      const [x1, y1] = p1, [x2, y2] = p2, [t1x, t1y] = t1, [t2x, t2y] = t2;
+      const inner = -t2x * x1 + t2x * x2 - t2y * y1 + t2y * y2;
+      const den = t1y * t2x - t1x * t2y;
+      c = [x1 + t1y * inner / den, y1 - t1x * inner / den];
+    }
+    const cw = (t1[0] * (p1[1] - c[1]) - (p1[0] - c[0]) * t1[1]) > 0;
+    const rx = Math.hypot(p1[0] - c[0], p1[1] - c[1]);   // x semi-axis
+    const ry = Math.hypot(p2[0] - c[0], p2[1] - c[1]);   // y semi-axis
+    let a1 = Math.atan2(p1[1] - c[1], p1[0] - c[0]);
+    let a2 = Math.atan2(p2[1] - c[1], p2[0] - c[0]);
+    if (cw && a1 < a2) a2 -= 2 * Math.PI;
+    if (!cw && a2 < a1) a1 -= 2 * Math.PI;
+    return { kind: 'ellipse', c, rx, ry, a1, a2, cw };
+  }
+
+  /* Sample an arc descriptor to a polyline (exact parametrization
+   * P(a) = c + (rx cos a, ry sin a)).  Sub-degree steps: visually
+   * indistinguishable from the true conic, and immune to canvas
+   * arc-direction semantics ambiguity. */
+  function sampleArc(s, stepRad = Math.PI / 360) { // 0.5 deg
+    if (s.kind === 'line') return [s.p1, s.p2];
+    const n = Math.max(6, Math.ceil(Math.abs(s.a2 - s.a1) / stepRad));
+    const pts = [];
+    for (let i = 0; i <= n; i++) {
+      const a = s.a1 + (s.a2 - s.a1) * i / n;
+      pts.push([s.c[0] + s.rx * Math.cos(a), s.c[1] + s.ry * Math.sin(a)]);
+    }
+    return pts;
+  }
+
+  /* ---------- circuit -> closed polygon (ArcCircuitPolygon) ----------
+   * Alternate tangent signs along the circuit; first node gets +internal.
+   */
+  function circuitSegments(circuit) {
+    const nodes = circuit.map((k, i) => {
+      const p = coordinate(k);
+      const t = INWARD[SIDE[k]];
+      const sgn = (i % 2 === 0) ? 1 : -1;
+      return [p, [t[0] * sgn, t[1] * sgn]];
+    });
+    const segs = [];
+    for (let i = 0; i < nodes.length; i++) {
+      const [p1, t1] = nodes[i];
+      const [p2, t2] = nodes[(i + 1) % nodes.length];
+      segs.push(arcFromDescriptors(p1, t1, p2, t2));
+    }
+    return segs;
+  }
+
+  /* Sampled polygon points of a circuit (used by tests & SVG export). */
+  function circuitPolygon(circuit, stepDeg = 5) {
+    const segs = circuitSegments(circuit);
+    const pts = [];
+    for (const s of segs) {
+      let sample;
+      if (s.kind === 'line') sample = [s.p1, s.p2];
+      else {
+        const steps = Math.max(1, Math.round(Math.abs(s.a2 - s.a1) / (stepDeg * Math.PI / 180)));
+        sample = [];
+        for (let i = 0; i <= steps; i++) {
+          const a = s.a1 + (s.a2 - s.a1) * i / steps;
+          sample.push([s.c[0] + s.rx * Math.cos(a), s.c[1] + s.ry * Math.sin(a)]);
+        }
+      }
+      if (pts.length) pts.push(...sample.slice(1)); else pts.push(...sample);
+    }
+    return pts;
+  }
+
+  /* ---------- tile cache ---------- */
+  const tileCache = new Map();
+  function getTile(connIdx) {
+    if (tileCache.has(connIdx)) return tileCache.get(connIdx);
+    const circuits = traceCircuits(CONNECTION_SETS[connIdx - 1]);
+    // draw order: white (odd-min) first = under, then black on top
+    circuits.sort((a, b) => (b[0] % 2) - (a[0] % 2));
+    const tile = circuits.map(c => ({
+      circuit: c,
+      whiteFirst: (c[0] % 2) === 1,
+      segs: circuitSegments(c)
+    }));
+    tileCache.set(connIdx, tile);
+    return tile;
+  }
+  function connIdxByName(name) { return NAMED_TILES[name]; }
+  function nameForConnIdx(idx) { return TILE_NAME[idx] || ('#' + idx); }
+
+  /* ---------- tilings ----------
+   * Tiling = list of {x, y, s} (axis-aligned square tiles, math coords).
+   * Depth = -log2(s). Odd depth inverts the motif (TileParity rule).
+   */
+  function tileDepth(t) {
+    return Math.round(-Math.log2(Math.abs(t.s)));
+  }
+  function makeTile(x, y, s) { return { x, y, s }; }
+
+  /* RandomSquareSubdivisionTiling[n, d] */
+  function randomSubdivision(random, n, maxDepth = Infinity) {
+    let tiles = [makeTile(0, 0, 1)];
+    for (let k = 0; k < n; k++) {
+      const cands = [];
+      tiles.forEach((t, i) => { if (tileDepth(t) < maxDepth) cands.push(i); });
+      if (!cands.length) break;
+      const i = cands[Math.floor(random() * cands.length)];
+      const t = tiles[i], s = t.s / 2;
+      tiles.splice(i, 1,
+        makeTile(t.x, t.y, s), makeTile(t.x + s, t.y, s),
+        makeTile(t.x, t.y + s, s), makeTile(t.x + s, t.y + s, s));
+    }
+    return tiles;
+  }
+
+  function gridTiling(rows, cols) {
+    const out = [];
+    for (let j = 0; j < rows; j++)
+      for (let i = 0; i < cols; i++) out.push(makeTile(i, j, 1));
+    return out;
+  }
+
+  /* CheckerboardTiling[n] */
+  function checkerboardTiling(n) {
+    const out = [];
+    for (let i = 0; i < n; i++)
+      for (let j = 0; j < n; j++) {
+        if ((i + j) % 2 === 0) out.push(makeTile(i, j, 1));
+        else {
+          out.push(makeTile(i, j, 0.5), makeTile(i, j + 0.5, 0.5),
+            makeTile(i + 0.5, j, 0.5), makeTile(i + 0.5, j + 0.5, 0.5));
+        }
+      }
+    return out;
+  }
+
+  /* SurroundTiling / OffsetSurroundTiling (1.5-periodic unit: one big
+   * central tile + 8 half tiles; coincident tiles dedup) */
+  function surroundUnit() {
+    const out = [makeTile(0.5, 0.5, 1)];
+    for (let i = 0; i <= 3; i++) out.push(makeTile(i * 0.5, 0, 0.5));
+    for (let i = 0; i <= 3; i++) out.push(makeTile(i * 0.5, 1.5, 0.5));
+    for (let i = 1; i <= 2; i++) out.push(makeTile(0, i * 0.5, 0.5));
+    for (let i = 1; i <= 2; i++) out.push(makeTile(1.5, i * 0.5, 0.5));
+    return out;
+  }
+  function dedupTiles(tiles) {
+    const seen = new Set(); const out = [];
+    for (const t of tiles) {
+      const key = t.x.toFixed(9) + ',' + t.y.toFixed(9) + ',' + t.s;
+      if (seen.has(key)) continue;
+      seen.add(key); out.push(t);
+    }
+    return out;
+  }
+  function surroundTiling(n) {
+    const unit = surroundUnit(), out = [];
+    for (let i = 0; i < n; i++)
+      for (let j = 0; j < n; j++)
+        for (const t of unit) out.push(makeTile(t.x + 1.5 * i, t.y + 1.5 * j, t.s));
+    return dedupTiles(out);
+  }
+  function offsetSurroundTiling(m, n) {
+    const unit = surroundUnit(), out = [];
+    for (let i = 0; i < n; i++)
+      for (let j = 0; j < m; j++)
+        for (const t of unit)
+          out.push(makeTile(t.x + 1.5 * i, t.y + 1.5 * j + (i % 3) / 2, t.s));
+    return dedupTiles(out);
+  }
+
+  /* FillTiling (quadtree region fill; generalizes to photo predicates) */
+  function fillTiling(region, llx, lly, size, maxDepth) {
+    const out = [];
+    (function rec(x, y, s, d) {
+      const state = region(x, y, x + s, y + s);
+      if (state === 'out') return;
+      if (state === 'in') { out.push(makeTile(x, y, s)); return; }
+      if (d >= maxDepth) { out.push(makeTile(x, y, s)); return; }
+      const h = s / 2;
+      rec(x, y, h, d + 1); rec(x + h, y, h, d + 1);
+      rec(x, y + h, h, d + 1); rec(x + h, y + h, h, d + 1);
+    })(llx, lly, size, 0);
+    return out;
+  }
+
+  /* ---------- palettes ---------- */
+  const PALETTES = {
+    bw: ['#000000', '#ffffff'],
+    wb: ['#ffffff', '#000000'],
+    ink: ['#101018', '#f4efe6'],
+    night: ['#05070f', '#d8c9a3'],
+    oxide: ['#7b1f13', '#f7e9d0'],
+    teal: ['#0f3b34', '#efe7d2'],
+    ultramarine: ['#141b52', '#f0ead6'],
+    forest: ['#123524', '#e8e3c9'],
+    slate_ramp: ['#22242a', '#e4e4dc'],
+    rainbow_ramp: ['#d90429', '#efefeb']
+  };
+  function parseColor(str) {
+    const s = str.replace('#', '');
+    const full = s.length === 3 ? s.split('').map(c => c + c).join('') : s;
+    return [parseInt(full.slice(0, 2), 16), parseInt(full.slice(2, 4), 16), parseInt(full.slice(4, 6), 16)];
+  }
+  function lerpColor(a, b, t) {
+    const ca = parseColor(a), cb = parseColor(b);
+    const m = ca.map((v, i) => Math.round(v + (cb[i] - v) * t));
+    return 'rgb(' + m.join(',') + ')';
+  }
+
+  /* ---------- rendering ----------
+   * renderTiling draws tiles biggest-first (small overpaint big), and
+   * inverts the motif's colors at odd depth (TileParity rule).
+   * pickTile(depth, tile) -> connection-set index (1..24)
+   * palette: [color0(even-min circuits, drawn on top), color1(odd-min, under)]
+   */
+  function traceTilePolygons(ctx, tileDef, colTop, colUnder) {
+    // Carlson's draw order: ALL white circuits first (under), then ALL
+    // black circuits (on top) -- see SquareArcTile in the WL source.
+    for (const pass of [true, false]) {
+      for (const { whiteFirst, segs } of tileDef) {
+        if (whiteFirst !== pass) continue;
+        ctx.fillStyle = pass ? colUnder : colTop;
+        ctx.beginPath();
+        let started = false;
+        for (const s of segs) {
+          const pts = sampleArc(s);
+          for (let i = started ? 1 : 0; i < pts.length; i++) {
+            if (!started) { ctx.moveTo(pts[i][0], pts[i][1]); started = true; }
+            else ctx.lineTo(pts[i][0], pts[i][1]);
+          }
+        }
+        ctx.closePath();
+        // even-odd fill matches the gold rasterizer (arcs can wrap 270 deg
+        // around tile corners and self-overlap)
+        ctx.fill('evenodd');
+      }
+    }
+  }
+
+  function renderTiling(ctx, tiles, opts) {
+    const { pickTile, palette, bounds } = opts;
+    const order = tiles.slice().sort((a, b) => tileDepth(a) - tileDepth(b)); // big first
+    for (const t of order) {
+      if (bounds) {
+        const m = t.s / 6 + t.s * 0.1;
+        if (t.x + t.s + m < bounds[0] || t.x - m > bounds[2] ||
+          t.y + t.s + m < bounds[1] || t.y - m > bounds[3]) continue;
+      }
+      const depth = tileDepth(t);
+      const pal = (typeof palette === 'function') ? palette(depth) : palette;
+      const connIdx = pickTile(depth, t);
+      const def = getTile(connIdx);
+      const invert = depth % 2 === 1;
+      ctx.save();
+      ctx.translate(t.x, t.y);
+      ctx.scale(t.s, t.s);
+      traceTilePolygons(ctx, def,
+        invert ? pal[1] : pal[0],   // color drawn on top (black circuits)
+        invert ? pal[0] : pal[1]);  // under color (white circuits)
+      ctx.restore();
+    }
+  }
+
+  /* Fit a tiling to a canvas viewport (engine keeps math y-up coords). */
+  function fitTransform(ctx, tiles, w, h, padding = 0) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const t of tiles) {
+      const m = t.s / 4;   // generous wing margin (wings reach s/6, plus slop)
+      minX = Math.min(minX, t.x - m); minY = Math.min(minY, t.y - m);
+      maxX = Math.max(maxX, t.x + t.s + m); maxY = Math.max(maxY, t.y + t.s + m);
+    }
+    if (padding) { const p = (maxX - minX) * padding; minX -= p; maxX += p; minY -= p; maxY += p; }
+    const bw = maxX - minX, bh = maxY - minY;
+    const s = Math.min(w / bw, h / bh);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.translate((w - bw * s) / 2 - minX * s, (h + bh * s) / 2 + minY * s);
+    ctx.scale(s, -s);
+    return s;
+  }
+
+  return {
+    PPS, NP, PT, SIDE, INWARD, coordinate,
+    CONNECTION_SETS, TILE_NAMES, NAMED_TILES, connIdxByName, nameForConnIdx,
+    mulberry32, seedFromString, randSeed,
+    traceCircuits, circuitSegments, circuitPolygon, sampleArc, getTile, tileDepth,
+    randomSubdivision, gridTiling, checkerboardTiling, surroundTiling,
+    offsetSurroundTiling, fillTiling, dedupTiles,
+    renderTiling, fitTransform, PALETTES, parseColor, lerpColor
+  };
+})();
+if (typeof module !== 'undefined') module.exports = Truchet;
+
+</script>
+<script>
+/* Truchet Studio — Generator tab (Phase 1d)
+ * Single faithful engine (src/engine.js); this file is UI only. */
+(function () {
+  'use strict';
+  const T = window.Truchet;
+
+  /* ================= state ================= */
+  const DEFAULTS = {
+    tiling: 'chk',      // chk | grid | rand | sur | off
+    n: 6,               // chk / sur size
+    rows: 4, cols: 4,   // grid
+    offCols: 4, offRows: 2, // offset surround (m cols, n rows)
+    splits: 12, maxd: 4,// random subdivision
+    seed: 'k7x2m9',
+    motif: '/',         // tile name or 'mix'
+    pal: 'bw',          // palette key or 'custom'
+    c1: '#101018', c2: '#3a6ea5', bg: '#f4efe6', // custom ramp
+    pad: 2              // padding percent
+  };
+  let S = Object.assign({}, DEFAULTS);
+
+  const HASH_KEYS = {
+    tiling: 't', n: 'n', rows: 'rows', cols: 'cols',
+    offCols: 'oc', offRows: 'or', splits: 'sp',
+    maxd: 'md', seed: 'sd', motif: 'm', pal: 'p', c1: 'c1', c2: 'c2',
+    bg: 'bg', pad: 'pd'
+  };
+  function writeHash() {
+    const p = new URLSearchParams();
+    for (const [k, h] of Object.entries(HASH_KEYS)) p.set(h, S[k]);
+    location.hash = p.toString();
+  }
+  function readHash() {
+    const p = new URLSearchParams(location.hash.slice(1));
+    for (const [k, h] of Object.entries(HASH_KEYS)) {
+      if (p.has(h)) {
+        const v = p.get(h);
+        S[k] = (k in DEFAULTS && typeof DEFAULTS[k] === 'number') ? +v : v;
+      }
+    }
+  }
+
+  /* ================= tiling + pickTile ================= */
+  function buildTiling() {
+    switch (S.tiling) {
+      case 'chk': return T.checkerboardTiling(S.n);
+      case 'grid': return T.gridTiling(S.rows, S.cols);
+      case 'rand': {
+        const rnd = T.mulberry32(T.seedFromString(S.seed));
+        return T.randomSubdivision(rnd, S.splits, S.maxd);
+      }
+      case 'sur': return T.surroundTiling(S.n);
+      case 'off': return T.offsetSurroundTiling(S.offCols, S.offRows);
+    }
+    return T.checkerboardTiling(4);
+  }
+  function buildPicker(tiles) {
+    if (S.motif !== 'mix') {
+      const idx = T.connIdxByName(S.motif) || T.connIdxByName('/');
+      return () => idx;
+    }
+    // stable per-tile mix: sorted coords + fresh PRNG stream
+    const rnd = T.mulberry32(T.seedFromString(S.seed + '\u0001mix'));
+    const map = new Map();
+    const sorted = tiles.slice().sort(
+      (a, b) => (a.x - b.x) || (a.y - b.y) || (a.s - b.s));
+    for (const t of sorted) {
+      map.set(t.x + ',' + t.y + ',' + t.s,
+        1 + Math.floor(rnd() * T.TILE_NAMES.length));
+    }
+    return (depth, t) => map.get(t.x + ',' + t.y + ',' + t.s) || 8;
+  }
+  function buildPalette(tiles) {
+    if (S.pal !== 'custom') return T.PALETTES[S.pal] || T.PALETTES.bw;
+    let maxD = 0;
+    for (const t of tiles) maxD = Math.max(maxD, T.tileDepth(t));
+    maxD = Math.max(1, maxD);
+    return (depth) => [T.lerpColor(S.c1, S.c2, depth / maxD), S.bg];
+  }
+
+  /* ================= main view ================= */
+  const canvas = document.getElementById('mainCanvas');
+  const ctx = canvas.getContext('2d');
+  function drawScene(c, tiles, w, h, cropAspect) {
+    const cx = c.getContext('2d');
+    cx.setTransform(1, 0, 0, 1, 0, 0);
+    cx.fillStyle = (S.pal === 'custom') ? S.bg
+      : (T.PALETTES[S.pal] || T.PALETTES.bw)[1];
+    cx.fillRect(0, 0, w, h);
+    if (cropAspect) {
+      drawCropped(cx, tiles, w, h, cropAspect);
+    } else {
+      T.fitTransform(cx, tiles, w, h, S.pad / 100);
+      T.renderTiling(cx, tiles, {
+        pickTile: buildPicker(tiles),
+        palette: buildPalette(tiles)
+      });
+    }
+  }
+  function boundsOf(tiles) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const t of tiles) {
+      const m = t.s / 4;
+      x0 = Math.min(x0, t.x - m); y0 = Math.min(y0, t.y - m);
+      x1 = Math.max(x1, t.x + t.s + m); y1 = Math.max(y1, t.y + t.s + m);
+    }
+    const p = (S.pad / 100) * (x1 - x0);
+    return [x0 - p, y0 - p, x1 + p, y1 + p];
+  }
+  /* Carlson CropSquareTiling: crop from the bounding square to aspect a. */
+  function drawCropped(cx, tiles, w, h, aspect) {
+    const [x0, y0, x1, y1] = boundsOf(tiles);
+    const side = Math.max(x1 - x0, y1 - y0);
+    const cxm = (x0 + x1) / 2, cym = (y0 + y1) / 2;
+    let winW, winH;
+    if (aspect >= 1) { winW = side; winH = side / aspect; }
+    else { winH = side; winW = side * aspect; }
+    const s = Math.min(w / winW, h / winH);
+    const wx0 = cxm - winW / 2, wy0 = cym - winH / 2;
+    cx.setTransform(s, 0, 0, -s, -s * wx0, h + s * wy0);
+    T.renderTiling(cx, tiles, {
+      pickTile: buildPicker(tiles),
+      palette: buildPalette(tiles),
+      bounds: [wx0, wy0, wx0 + winW, wy0 + winH]
+    });
+  }
+  function renderMain() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth * dpr, h = canvas.clientHeight * dpr;
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w; canvas.height = h;
+    }
+    drawScene(canvas, buildTiling(), w, h, null);
+  }
+
+  /* ================= export ================= */
+  function sanitizeMotif(m) {
+    return ({ '/': 'sl', '\\': 'bs', '|': 'vb', '+': 'pl',
+      '.': 'd', '-': 'mi' })[m] || m;
+  }
+  function exportName(w, h) {
+    const t = S.tiling;
+    const sizePart = (t === 'chk' || t === 'sur') ? S.n
+      : t === 'grid' ? S.rows + 'x' + S.cols
+        : t === 'off' ? S.offCols + 'x' + S.offRows
+          : S.splits + 'd' + S.maxd;
+    const pal = S.pal === 'custom' ? 'ramp' : S.pal;
+    const motif = S.motif === 'mix' ? 'mix' : sanitizeMotif(S.motif);
+    return 'truchet_' + t + sizePart + '_' + S.seed + '_m' + motif +
+      '_p' + pal + '_' + w + 'x' + h + '.png';
+  }
+  function exportPNG(w, h) {
+    const off = document.createElement('canvas');
+    off.width = w; off.height = h;
+    drawScene(off, buildTiling(), w, h, w / h);
+    const name = exportName(w, h);
+    off.toBlob((blob) => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    }, 'image/png');
+    document.getElementById('fileName').textContent = name;
+  }
+
+  /* ================= UI wiring ================= */
+  const $ = (id) => document.getElementById(id);
+  const FIELDS = {
+    tiling: 'selTiling', n: 'inN', rows: 'inRows', cols: 'inCols',
+    offCols: 'inOffM', offRows: 'inOffN',
+    splits: 'inSplits', maxd: 'inMaxd', seed: 'inSeed', pal: 'selPal',
+    c1: 'inC1', c2: 'inC2', bg: 'inBg', pad: 'inPad'
+  };
+  function pushToInputs() {
+    $('selTiling').value = S.tiling;
+    $('inN').value = S.n; $('inRows').value = S.rows; $('inCols').value = S.cols;
+    $('inOffM').value = S.offCols; $('inOffN').value = S.offRows;
+    $('inSplits').value = S.splits; $('inMaxd').value = S.maxd;
+    $('inSeed').value = S.seed; $('selPal').value = S.pal;
+    $('inC1').value = S.c1; $('inC2').value = S.c2; $('inBg').value = S.bg;
+    $('inPad').value = S.pad; $('outPad').textContent = S.pad + '%';
+  }
+  function refreshParamVisibility() {
+    const show = (id, on) => $(id).style.display = on ? '' : 'none';
+    show('rowN', S.tiling === 'chk' || S.tiling === 'sur');
+    show('rowGrid', S.tiling === 'grid');
+    show('rowRand', S.tiling === 'rand');
+    show('rowOff', S.tiling === 'off');
+    show('rowCustomPal', S.pal === 'custom');
+  }
+  function onChange() {
+    writeHash(); refreshParamVisibility(); renderMain(); updateMotifSel();
+  }
+  for (const [k, id] of Object.entries(FIELDS)) {
+    $(id).addEventListener('input', () => {
+      const v = $(id).value;
+      S[k] = (typeof DEFAULTS[k] === 'number') ? +v : v;
+      if (k === 'pad') $('outPad').textContent = S.pad + '%';
+      onChange();
+    });
+  }
+  $('btnNewSeed').addEventListener('click', () => {
+    S.seed = T.randSeed(Math.random);
+    pushToInputs(); onChange();
+  });
+  $('btnCopyLink').addEventListener('click', () => {
+    writeHash();
+    navigator.clipboard.writeText(location.href);
+    $('btnCopyLink').textContent = 'copied!';
+    setTimeout(() => $('btnCopyLink').textContent = 'copy link', 1200);
+  });
+  $('hideBtn').addEventListener('click', () => document.body.classList.add('panel-hidden'));
+  $('showBtn').addEventListener('click', () => document.body.classList.remove('panel-hidden'));
+
+  /* export controls */
+  $('btnExport').addEventListener('click', () => {
+    const res = +$('selRes').value;
+    const aspect = +$('selAspect').value;
+    let w, h;
+    if (aspect === 1) { w = res; h = res; }
+    else if (aspect > 1) { w = res; h = Math.round(res / aspect); }
+    else { h = res; w = Math.round(res * aspect); }
+    exportPNG(w, h);
+  });
+
+  /* motif picker: 24 previews + mix cell */
+  const grid = $('motifGrid');
+  function buildMotifGrid() {
+    grid.innerHTML = '';
+    const mix = document.createElement('canvas');
+    mix.className = 'mix'; mix.title = 'mix (random per tile)';
+    mix.dataset.motif = 'mix';
+    grid.appendChild(mix);
+    for (const name of T.TILE_NAMES) {
+      const c = document.createElement('canvas');
+      c.width = 88; c.height = 88;
+      c.title = name; c.dataset.motif = name;
+      const cx = c.getContext('2d');
+      cx.fillStyle = '#fff'; cx.fillRect(0, 0, 88, 88);
+      T.fitTransform(cx, [{ x: 0, y: 0, s: 1 }], 88, 88, 0.04);
+      T.renderTiling(cx, [{ x: 0, y: 0, s: 1 }], {
+        pickTile: () => T.connIdxByName(name),
+        palette: T.PALETTES.bw
+      });
+      grid.appendChild(c);
+    }
+    grid.querySelectorAll('canvas').forEach((c) => {
+      c.addEventListener('click', () => {
+        S.motif = c.dataset.motif;
+        onChange();
+      });
+    });
+  }
+  function updateMotifSel() {
+    grid.querySelectorAll('canvas').forEach((c) => {
+      c.classList.toggle('sel', c.dataset.motif === S.motif);
+    });
+  }
+
+  /* ================= boot ================= */
+  readHash();
+  pushToInputs();
+  buildMotifGrid();
+  refreshParamVisibility();
+  renderMain();
+  updateMotifSel();
+  window.addEventListener('resize', renderMain);
+})();
+
+</script>
+</body>
+</html>

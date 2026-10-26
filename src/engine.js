@@ -398,6 +398,7 @@ const Truchet = (function () {
           t.y + t.s + m < bounds[1] || t.y - m > bounds[3]) continue;
       }
       const depth = tileDepth(t);
+      const pal = (typeof palette === 'function') ? palette(depth) : palette;
       const connIdx = pickTile(depth, t);
       const def = getTile(connIdx);
       const invert = depth % 2 === 1;
@@ -405,8 +406,8 @@ const Truchet = (function () {
       ctx.translate(t.x, t.y);
       ctx.scale(t.s, t.s);
       traceTilePolygons(ctx, def,
-        invert ? palette[1] : palette[0],   // color drawn on top (black circuits)
-        invert ? palette[0] : palette[1]);  // under color (white circuits)
+        invert ? pal[1] : pal[0],   // color drawn on top (black circuits)
+        invert ? pal[0] : pal[1]);  // under color (white circuits)
       ctx.restore();
     }
   }

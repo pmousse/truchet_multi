@@ -11,6 +11,8 @@ rendering engine.
 | path | what |
 |---|---|
 | `src/engine.js` | the rendering engine: connection sets, circuit tracing, exact arc geometry, tilings, palettes, canvas rendering. Plain JS, no dependencies (works as `<script>` and as a Node module for tests). |
+| `src/app.js`, `src/style.css`, `index.html` | the **Generator tab** app (dev layout, loads `src/` files). |
+| `build.js` → `dist/truchet.html` | **the single-file build**: everything inlined, zero external references. Open it directly anywhere. |
 | `dev/port.py` | literal Python port of Carlson's `MultiScaleTruchetPatterns.wl` — our **gold reference model**, validated against his published images. |
 | `dev/gold.json` | reference data dumped from `port.py`: all 24 named tiles (connections, circuits, sampled polygon points) + tiling configurations. |
 | `dev/check_gold.js` | fidelity test: compares `src/engine.js` against `dev/gold.json`. Run `node dev/check_gold.js`. |
@@ -85,8 +87,18 @@ match the Python gold model, which itself matches Carlson's images.
 - [x] Phase 1b: engine rewritten as literal port; passes gold checks
 - [x] Phase 1c: rendering pipeline fixed (polyline arc fills, draw order,
   math-y-up orientation) and verified end-to-end against browser screenshots
-- [ ] Phase 1d: Generator tab UI (seed control, tiling/motif pickers, export)
+- [x] Phase 1d: Generator tab UI (seed, tilings, 24-motif picker, palettes,
+  custom depth ramp, crop-based export, shareable URL hash)
 - [ ] Phase 2+: Fill / Photo / Composer / Mandala tabs
+
+## Using the Generator
+
+Open `index.html` (dev) or `dist/truchet.html` (single file, run `node build.js`
+after changes). Everything lives in the URL hash — "copy link" shares the
+exact pattern + seed. PNG export crops from the bounding square (Carlson's
+`CropSquareTiling`) for portrait/landscape sizes; export filenames encode
+seed and params instead of a watermark, e.g.
+`truchet_chk6_k7x2m9_m-sl_pink_2048x2048.png`.
 
 ## Credit
 
