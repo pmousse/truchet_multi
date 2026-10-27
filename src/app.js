@@ -331,11 +331,22 @@
     cx.fillStyle = (S.pal === 'custom') ? S.bg
       : (T.PALETTES[S.pal] || T.PALETTES.bw)[1];
     cx.fillRect(0, 0, w, h);
+    if (!tiles.length) return;   // ground only; there is nothing to fit
     /* The lattice already carries the frame's ratio, so this scales with no
      * clipping in the normal case; 'cover' only matters when an odd custom
      * size had to be approximated by the nearest lattice (sub-1% sliver). */
     const [x0, y0, x1, y1] = (tabDef().viewBounds || worldBounds)(tiles);
     const bw = x1 - x0, bh = y1 - y0;
+    /* Degenerate bounds would flow into s = -0 and then into setTransform, and a
+     * zero-or-NaN matrix makes every later draw do nothing without an error - the
+     * silent black stage. Show it instead of hiding it. */
+    if (!(bw > 0 && bh > 0) || !Number.isFinite(bw) || !Number.isFinite(bh)) {
+      showError('This tab produced no drawable geometry.');
+      const info = document.getElementById('frameInfo');
+      if (info) info.textContent = 'nothing to draw';
+      return;
+    }
+    clearError();
     const s = Math.max(w / bw, h / bh);
     const winW = w / s, winH = h / s;
     const wx0 = (x0 + x1) / 2 - winW / 2, wy0 = (y0 + y1) / 2 - winH / 2;
@@ -359,6 +370,20 @@
     const dpr = window.devicePixelRatio || 1;
     const [fw, fh] = framePx();
     const ar = fw / fh;
+    /* A frame that is not two finite, positive numbers used to reach the canvas
+     * as a NaN height: Math.round(NaN * dpr) is NaN, and assigning NaN to
+     * canvas.height coerces to 0 - a backing store that can hold nothing while
+     * the CSS box still looked right, so the stage went black and the console
+     * stayed silent. Refuse the size, say so, and keep the last good one. */
+    if (!Number.isFinite(ar) || ar <= 0) {
+      showError('Frame size is not a usable number - fix the frame fields.');
+      const cx = canvas.getContext('2d');
+      if (canvas.width && canvas.height) cx.clearRect(0, 0, canvas.width, canvas.height);
+      const info = document.getElementById('frameInfo');
+      if (info) info.textContent = 'frame: unresolved';
+      return;
+    }
+    clearError();
     /* Preview = the export frame, scaled to fit the visible stage, so what you
      * see is what the PNG will be (same lattice, same crop-free fill). */
     const stage = document.getElementById('stage');
@@ -369,7 +394,7 @@
     canvas.style.width = cw.toFixed(1) + 'px';
     canvas.style.height = ch.toFixed(1) + 'px';
     const w = Math.round(cw * dpr), h = Math.round(ch * dpr);
-    if (canvas.width !== w || canvas.height !== h) {
+    if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
       canvas.width = w; canvas.height = h;
     }
     if (dpr !== lastDpr) {   // browser zoom changes devicePixelRatio
@@ -507,9 +532,20 @@
         if (!raw.trim()) return;
         const v = +raw;
         if (!Number.isFinite(v)) return;
-        const lo = el.min === '' ? -Infinity : +el.min;
-        const hi = el.max === '' ? Infinity : +el.max;
-        S[k] = clamp(v, lo, hi);
+        /* Bounds come from the element, and only where it has any. A number box
+         * reads an absent attribute as ''; a <select> - the long-edge preset is
+         * one - has no min/max property at all, so its value is undefined, and
+         * +undefined is NaN: clamping a good value between NaN bounds silently
+         * wrote NaN into the state, which reached the canvas as a zero-height
+         * backing store - a black stage that logs nothing at all.
+         * A select bounds its own values through framePx's clamp instead. */
+        const bound = (attr) => {
+          if (attr === '' || attr === undefined || attr === null) return null;
+          const b = +attr;
+          return Number.isFinite(b) ? b : null;
+        };
+        const lo = bound(el.min), hi = bound(el.max);
+        S[k] = clamp(v, lo === null ? -Infinity : lo, hi === null ? Infinity : hi);
       } else {
         S[k] = raw;
       }

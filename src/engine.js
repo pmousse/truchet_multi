@@ -529,7 +529,19 @@ const Truchet = (function () {
     }
     if (padding) { const p = (maxX - minX) * padding; minX -= p; maxX += p; minY -= p; maxY += p; }
     const bw = maxX - minX, bh = maxY - minY;
+    /* No tiles (or bounds that never got set) leave these at Infinity / -Infinity,
+     * which turns bw into NaN and s into NaN - and a NaN transform silences every
+     * later draw without raising anything. Report "nothing to fit" as 0 instead of
+     * corrupting the context. */
+    if (!(bw > 0 && bh > 0) || !Number.isFinite(bw) || !Number.isFinite(bh)) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      return 0;
+    }
     const s = Math.min(w / bw, h / bh);
+    if (!Number.isFinite(s) || s <= 0) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      return 0;
+    }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.translate((w - bw * s) / 2 - minX * s, (h + bh * s) / 2 + minY * s);
     ctx.scale(s, -s);
