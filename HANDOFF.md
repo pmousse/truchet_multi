@@ -11,7 +11,7 @@ Mandala one was built and then removed at the user's request, see below.
 ## Status (Generator + Photo solid; Mandala tried and removed)
 - ENGINE (`src/engine.js`) = literal port of Carlson's Wolfram package
   (`mstp/MultiScaleTruchetPatterns.wl`). Validated against Python oracle
-  `dev/port.py` via `dev/gold.json` — `node dev/check_gold.js` → 24/24 PASS.
+  `dev/port.py` — measured tile by tile by the gates listed under *Running the gates*.
 - UI: `index.html` (dev page, loads `src/engine.js` + `src/app.js` +
   `src/photo.js` + `src/fill.js` directly) + `src/app.js`, which is a tab shell:
   a tab registers itself with `registerTab(key, def)` and supplies `motifs`,
@@ -62,7 +62,7 @@ Mandala one was built and then removed at the user's request, see below.
   `Truchet.renderPolygons` no longer exists).
 
 ## The shape bug — history (kept for context)
-User annotated `dev/motifs_red.jpg`: flagged tiles are yn, ye, ys, yw,
+The annotated reference (now in `refs/`) flagged tiles: yn, ye, ys, yw,
 anw, ane, asw (and the selected asw). Symptom: white slits / curved-triangle
 holes inside tiles, "broken lens" segments, pattern bleeding off canvas edge.
 
@@ -102,13 +102,13 @@ holes inside tiles, "broken lens" segments, pattern bleeding off canvas edge.
    fine — but confirm with a tn-grid screenshot.
 
 ### Definitive verification method (needs browser — the whole point of the switch)
-- Open `dev/test.html` or `index.html`, screenshot the motif grid.
+- Open `index.html`, screenshot the motif grid.
 - Pixel-diff screenshots vs Python oracle: `python dev/diff_canvas.py`
   (maps canvas px ↔ world coords; supports 1/2/4-bit palette PNGs).
 - Side-by-side vs Carlson's published cells: use the binary cell-matcher
   `dbg_match3.py` (root) → compares a figure's grid cells vs renders of all
   24 names (best-match per cell). Run it on a screenshot of our motif grid
-  and on Carlson's `ref_motifs_big.png` and compare the two match lists.
+  and on Carlson's figure in `refs/` and compare the two match lists.
 
 ## Key files
 - `src/engine.js` — frozen-geometry engine (24 connection sets, circuits, arcs,
@@ -129,325 +129,63 @@ holes inside tiles, "broken lens" segments, pattern bleeding off canvas edge.
   themselves through `app.registerTab`, both build pictures with
   `TR.fillTiling`, and both keep their own state object (`P` / `F`) that never
   enters the share hash. Harnesses: `dev/photoharness.js`, `dev/fillharness.js`;
-  gates: `dev/_photoqa.py`, `dev/_fillqa.py`; one-off aspect report:
-  `dev/_fillaspect.py`.
-- `dev/port.py` — Python oracle (fill_poly now nonzero default).
-  `dev/gold.json`, `dev/check_gold.js`, `dev/density_ramp.json`,
-  `dev/seedrand.py` (JS mulberry32/seedFromString ↔ Python identical),
-  `dev/diff_canvas.py`, `dev/zoom.py` (PNG read/write, palette-capable),
-  `dev/render_refs.py` (ref2_*.png), `dev/render_flagged.py` (flag_sheet.png),
-  `dev/test.html`, user screenshots `dev/motifs.jpg`, `dev/motifs_red.jpg`,
-  `dev/studio1.jpg`, `dev/test1-4.jpg`.
-- Carlson refs on disk: `ref_motifs_big.png` (his 15 motif cells, 428×262,
-  8-bit palette), `ref_mstp_full.png` (419×419 main figure), `ref_tilingexamples.png`,
-  `ref2_*.png`, `ref3_*.png`, `ours_nonzero_sheet_x2.png`, `flag_sheet.png`.
-- Carlson source: `mstp/MultiScaleTruchetPatterns.wl` (+ .nb examples;
-  notebook renders all 24 named tiles on LightGray rect {-0.5,-0.5}..{1.5,1.5},
-  ImageSize 50 — no cached outputs in the .nb).
-- `dbg_tile.py`, `dbg_match3.py` (root) — working tools: render one tile
-  gray-style; binary best-match of grid-cells vs our 24 renders.
+  gates: `dev/_photoqa.py`, `dev/_fillqa.py` (the Fill gate also drives the
+  aspect/frame cases through the real UI).
+- `dev/port.py` - Python oracle (`fill_poly` now nonzero default).
 
-## Critical engine facts (do not change geometry)
-- 8 points/side-pair layout: S:1,2 (x=1/3,2/3), E:3,4, N:6,5, W:7,8. math y-up,
-  canvas y-flip via ctx.scale(s,-s) in fitTransform. CONFIRMED vs Carlson figure.
-- 24 connection sets (NAMED_TILES order 1..24): '+.', fnw, fne, yn, tn, '-',
-  fse, '/', 'ye', anw, p, ys, te, ase, '|', '+', yw, ane, 'x.', ts, tw, asw,
-  fsw, '\\'.
-- traceCircuits → circuits; color: circuit[0] odd → white(under), even → black(on top).
-  Draw all white circuits first, then black. Circuits may REUSE points (not a
-  partition) — overlap semantics is THE open question.
-- Arcs: Fork B exact ellipse quarter-arcs, center = tangent-line intersection,
-  sampled polylines (NO ctx.arc/ellipse). Tangent sign alternates per circuit node.
-- renderTiling: sort big tiles first; parity invert at odd depth; per-depth
-  palette function allowed.
-- Seeds: base36 token, mulberry32; state in URL hash. Export filename encodes
-  params (no watermark).
+Tooling that exists and is worth keeping: `dev/port.py`, `dev/zoom.py` (PNG
+read/write, palette-capable), the probe pages `dev/capture.html`,
+`dev/inktest.html`, `dev/tiletest.html`, `dev/bench.html` was dropped, and the
+gates `dev/_inkqa.py`, `dev/_tilesqa.py`, `dev/_appqa.py`, `dev/_fillqa.py`,
+`dev/_photoqa.py`, `dev/_ressqa.py`.
 
-## Browser QA toolkit (this session added it — use it, it works)
-Headless Chrome is how everything gets verified now:
+Deleted as scratch during cleanup (all reproducible, none needed to build or
+verify): the fidelity one-offs `dev/gold.json`, `dev/check_gold.js`,
+`dev/density_ramp.json`, `dev/seedrand.py`, `dev/diff_canvas.py`,
+`dev/render_refs.py`, `dev/render_flagged.py`, `dev/annot_check.py`,
+`dev/analyze_arcs*.py`, `dev/match*.py`, `dev/grid_order.py`,
+`dev/orient_test.py`, `dev/_motifs15b.py`, `dev/_fillaspect.py`,
+`dev/_screenshot_match.py`, `dev/_fillrule*.py`, `dev/_cmp_tile.py`,
+`dev/test.html`, `dev/bench.html`, the debug scripts at the repo root
+(`dbg_*.py`, `extract_nb.py`), every `flag_*.png` / `hole*.png` / `q_mstp_*` /
+`ours_*` / `or_test_*` diagnostic render, the browser captures in `dev/browse/`
+(116 files, 14 MB), exported wallpapers in `dev/truchet_*.png` (including a
+literal `… (1).png` download duplicate and a `m…sl-bs` one for the removed
+straight tiles), `dev/studio1.*`, `dev/test1-4.jpg`, `dev/motifs*.{jpg,png}`,
+`dev/another_screen.png`, `dev/browse_test_tiles.png`, five
+`téléchargement*.png`, `mstp.zip`, `mstp/__MACOSX/`, and the root-level
+article copies `truchet_page*.html`, `truchet_text.txt`.
 
-```
-"/c/Program Files/Google/Chrome/Application/chrome.exe" --headless=new \
-  --disable-gpu --hide-scrollbars --window-size=1200,1000 \
-  --force-device-scale-factor=2 --virtual-time-budget=4000 \
-  --screenshot="D:/_truchet/dev/browse/app_15.png" \
-  "file:///D:/_truchet/index.html?cb=x"
-python dev/_appqa.py dev/browse/app_15.png 0 0 600 2000   # 15/15 previews OK
-python dev/_tilesqa.py                                    # holes / extra pixels
-python dev/_motifs15b.py dev/carlson_motifs.png           # who is who in his figure
-python dev/_cmp_tile.py tn                                # chrome|oracle|diff strip
-```
-Gotchas already paid for: `_appqa.py` finds cells by flooding the DARK panel
-background (cell interiors stay unvisited, so black shapes inside a cell are
-safe), samples each cell near its centre (block-averaging fails on ~40px
-cells), and the oracle must be padded 0.04 to match `fitTransform`.
-`port.arc_circuit_polygon(2, circ)` — pps=2 is what the engine uses; pps=5
-renders different geometry and produced phantom "hole" reports.
+Carlson's figures and the reference shots supplied for this project were **not**
+deleted - they moved to `refs/`: `ref_motifs_big.png` (his 15 motif cells,
+428×262, 8-bit palette), `ref_mstp_full.png` (419×419 main figure),
+`ref_tilingexamples.png`, `ref_multiscaletiles2.png`, `ref_wingedtileassembly*.png`,
+`ref_mixtilings_full.png`, `ref_24tiles*.png`, `carlson_motifs*.png`,
+`straight_lines*.png`, `straight_from.jpg` (the straight-tile experiment the
+generator no longer contains, kept because the images were supplied inputs).
+Full listing: `ls refs/`.
 
-## Which 15 tiles, measured (not guessed)
-`python dev/_motifs15b.py dev/carlson_motifs.png` clusters Carlson's motifs.png
-ink into 15 cells, fits one square per cell from oracle geometry (fitted size
-37.5 px on an 87x90 pitch, identical for all 15) and scores IoU against all 24
-names x 4 rotations. IoU 0.80-0.90, no ambiguity:
+## Running the gates
 
-    \  /  -  |  +.  x.  +        2 diagonals, 2 bars, empty, star, plus
-    fnw fne fse fsw              the four "f" tiles = fnw rotated 0/90/180/270
-    tn  te  ts  tw               the four "t" tiles = tn rotated the same
+Run all six after any change to `src/`. Each exits non-zero on failure.
 
-Absent from his figure: the four "y" tiles (yn ye ys yw), the four "anchor"
-tiles (anw ane ase asw) and `p` — exactly the eight self-overlapping tiles the
-user had flagged as broken, plus `p`. They are still valid tiles in Carlson's
-`SquareTileNameMapping` and stay in the engine, but the UI no longer offers
-them. Engine exports `T.MOTIF_NAMES` (the 15) and `T.TILE_NAMES` (all 24);
-old links selecting a removed tile fall back to `/`.
+```bash
+node build.js                     # regenerate dist/truchet.html
 
-## Framing model (wallpapers + social sizes) — this session
-
-User intent: make desktop/phone wallpapers and square social posts, and the
-preview must be the picture that gets exported. Crop-free filling was the
-explicit request ("if I choose landscape 4K I should see the tiles displayed in
-a 3840 x 2160 canvas").
-
-What replaced the old behaviour:
-
-- **Old**: square tiling, then Carlson-style crop (or letterbox) to the frame.
-  Tiles got cut off; grid mode kept its square 3x3 inside a wide canvas.
-- **New**: the *tiling* is generated for the frame. `lattice()` returns integer
-  `cols x rows` of square tiles whose ratio equals the frame ratio; the render
-  scales that lattice to the canvas, so it fills edge to edge. `drawScene`
-  uses cover-scaling (`Math.max`) plus `renderTiling({bounds})`; the crop path
-  and `drawCropped`/`boundsOf` are gone.
-- Engine builders gained a second argument: `checkerboardTiling(cols, rows)`,
-  `surroundTiling(cols, rows)`, `randomSubdivision(rnd, n, maxd, seedTiles)`
-  (seeded from `gridTiling(rows, cols)`). Single-argument calls still give the
-  original square behaviour, so `dev/check_gold.js` and the oracle are unchanged.
-- `offsetSurroundTiling(m, n)` is (rows, cols) — matching the source's
-  `{i,0,n-1}` on x and `{j,0,m-1}` on y. The old app call had these swapped.
-- Frame formats in `src/app.js` `FRAME_FORMATS`: 1:1, 16:9, 9:16, 21:9, 4:3,
-  3:4, 3:2, 2:3, 5:4, 4:5, 2:1, 1:2, custom W x H. Long-edge presets 1K/2K/
-  2.5K/4K(3840)/4K+(4096).
-- Preset export sizes keep the long edge exactly at the chosen resolution
-  (1K/2K/2.5K/4K = 3840/4K+ = 4096) and derive the short edge from the frame
-  ratio: 16:9 at 4K is **3840 x 2160**, 1:1 at 2K is 2048 x 2048, 4:5 at 4K is
-  3072 x 3840. Sub-pixel ratio residue (21:9 is the worst, ~1 px) is absorbed by
-  cover scaling. Custom sizes are used verbatim; `reduceRatio()` (gcd, then
-  continued-fraction convergents capped at `MAX_LATTICE_SIDE = 64`) picks the
-  nearest lattice.
-- Every numeric parameter is a **number input**, not a range slider (density,
-  base scale, detail, smoothness, contrast, margin, splits, max depth, custom
-  frame size): `inputmode="numeric"`, and the element's own min/max are what
-  bound the state. A cleared or half-typed box is ignored rather than applied —
-  `+''` is `0`, which would otherwise slam a control to its minimum on the way to
-  the number being typed. Units live in the labels (`margin %`, `contrast %`), and
-  the only read-outs left are the ones that report a cap taking over.
-- `n` is a **density multiplier** (`density ×1 … ×N`), not a raw tile count.
-  Square tiles only tile a p:q rectangle in multiples of (p, q), so the lattice is
-  (p·t) × (q·t) and the box controls `t` directly — every step changes the grid.
-  Its max is recomputed per format from the caps
-  (`MAX_LATTICE_SIDE = 64`, `MAX_LATTICE_TILES = 5000`), so 1:1 goes to ×16,
-  16:9 to ×4 (64 × 36 tiles), 21:9 to ×3, 4:5 to ×12; the value is clamped on
-  format change instead of saturating silently. This replaced the old
-  "tiles along the short side" field, which looked dead because values between
-  multiples of q mapped to the same lattice (16:9: n = 2…13 all gave 16 × 9).
-  `#frameInfo` prints e.g. `48 × 27 tiles · 3840 × 2160 px · ×3`.
-- `rows`/`cols` and `offCols`/`offRows` inputs were removed (the frame ratio
-  sets them). Hash keys changed: `F` (format), `rs`, `fw`, `fh`; the old
-  `rows/cols/oc/or` keys are ignored by old links, which land on 1:1 — same
-  output as before.
-- QA note: `dev/_appqa.py` now discards non-square blobs when detecting preview
-  cells, because the stage starts at the panel edge (`#stage { left:300px }`) and
-  a thin strip used to be counted as a cell, shifting the index mapping.
-
-- **Motif pool (multi-select)**: the 15 motif cells plus `mix` are clickable.
-  Plain click = that motif everywhere. Ctrl/Cmd/Shift+click toggles a cell into a
-  *pool*; the tiling then picks one of the pooled motifs at random per tile —
-  the mix idea restricted to a chosen subset (e.g. fnw + tn only). `mix` in the
-  pool means all 15. Assignment is deterministic: `seed + salt(pool)` through
-  `mulberry32`, tiles keyed by `x,y,s`, so the same seed keeps the same layout
-  and changing the pool re-rolls it. State is `S.motifs` (array), hashed as
-  `m=a,b`; old single-motif links (`m=/`, `m=mix`) still load.
-
-## Mandala tab: built, verified, then REMOVED at the user's request
-
-A fifth tab (radial Truchet: polar cells using the same engine connection sets
-and arc geometry) was implemented in `src/mandala.js`, QA'd to a Python oracle
-match, and then deleted - the user looked at it and said it had "too many weird
-things happening", so it is out of the app. **Do not re-add it unless the user
-asks.** Everything is preserved in git commit `a15cf7e` (source, dev harnesses
-`dev/_mandqa.js`, `dev/_mandqa.py`, `dev/_mandgeo.js`, `dev/mandtest.html`).
-
-What was learned, in case a polar variant is ever wanted again:
-- Ring radii must grow by `exp(dTheta)` (`dTheta = 2pi/sectors`) and a cell must
-  warp as `r = r0*(r1/r0)^v`, `th = th0 + u*dTheta`. That makes the polar map
-  conformal (radial scale == angular scale), which is what keeps tangent arcs
-  tangent. Growing by `1 + dTheta` instead shears the cells and opens cracks.
-- Carlson's circuit polygons contain near-osculating arc pairs (band edges that
-  touch with matched curvature, zero-area overlap in the square). The warp gives
-  them area, i.e. hairline lenses that read as cracks; closing them needed
-  stroking every circuit in its own colour (`max(0.6, s*rMid*dTheta*0.045)`).
-- Clipping each cell to its warped quad is wrong: circuit wings reach 1/3 of a
-  cell into the neighbour and must paint across the seam, otherwise arm tips get
-  nicks.
-- `dev/port.py` was given a `step_deg` arc-tessellation argument for the polar
-  oracle; reverted, so `port.py` stays a literal mirror of Carlson's package.
-
-### `+` in a URL hash was silently eating the `+` motif (kept: this is a Generator fix)
-`new URLSearchParams(location.hash)` decodes a literal `+` as a space, so a typed
-link like `#m=+` selected motif `" "` -> blank canvas, and a pool like `tn,fnw,+`
-lost its `+`. `writeHash()` percent-encodes correctly (`m=%2B`), so only
-typed/old links and hand-built QA queries were affected. `readHash()` in
-`src/app.js` now pre-protects with `.replace(/\+/g, '%2B')`. Verified: typed
-`m=+` and encoded `m=%2B` screenshots are byte-identical.
-
-
-## Fill tab (live) - an outline filled with multi-scale Truchet
-`src/fill.js`. Ten preset shapes (circle, squircle, square, diamond, triangle,
-star, hexagon, heart, cross, ring) plus a custom mask chosen, dropped or pasted
-on the canvas. The shape is sampled once onto a 512 x 512 coverage grid (two
-sub-samples per axis, so an edge cell gets a fraction rather than a coin flip -
-that is what lets the staircase hug the outline) and reduced to a summed area
-table, so a cell query is four reads whatever the depth.
-
-The tiling is one `TR.fillTiling` quadtree per lattice cell, with the region
-predicate answering `'out'` for a cell entirely outside the shape, `'in'` for a
-cell entirely inside it, and falling through to subdivision for a cell the
-outline crosses. Two depths, both capped by `depthCap(lattice)`: *outline detail*
-how far a boundary cell keeps halving, *interior detail* how far a wholly-inside
-area keeps halving (0 = one coarse tile). Over the tile budget the build gives
-up outline precision first, then interior detail, and the read-out says which.
-
-- **The pixel floor is the thing that decides whether a wide frame looks like
-  Carlson or like wallpaper glue.** A cell at depth d is 2^-d lattice units, so
-  the floor ("never subdivide below N device pixels in the export") sets the cap
-  as `floor(log2(pxPerUnit / N))`. At 12 px a 16:9 / 1280 px export with base
-  scale 2 gives 40 px cells and a cap of ONE halving: every control still moved
-  its number while the pattern stayed a flat uniform texture with no lace on the
-  outline. The floor is now 4 px, which is the fine end of what an image reads at
-  arm's length, and the Fill default base scale is 1 so the coarsest cells are
-  the biggest the frame allows. Verified by eye: a 16:9 heart now shows coarse
-  interior motifs with a distinctly finer band tracing the outline.
-- **`viewBounds` frames the FRAME, not the tiles it produced.** A tab that draws
-  a shape inside a frame must frame the frame: framing its own tiles would scale
-  the shape up until it filled the canvas and it stopped being that shape at that
-  size. `viewBounds` is the general hook for that.
-- **`mode()` names the export.** `chk/grid/rand/sur/off` describe the Generator's
-  lattice; Fill supplies `fillheart`, `fillmask`, ...
-- **contain / cover keep their promise in a non-square frame**, measured, not
-  assumed: in a 32 x 18 lattice `contain` yields an 18 x 18 box (equal on both
-  axes, whole shape, margins left on the long axis), `cover` yields 32 x 18
-  (scaled to the long side, cut at the short one). Mirrored in 9:16. A square
-  test frame cannot tell these two apart, which is why the harness drives both
-  a wide and a tall frame through the real `#selFormat` select.
-- **The Frame controls moved out of `#genParams`.** `refreshParamVisibility` had
-  the comment "Frame / Color / Output are shared" while the markup kept Frame
-  inside the Generator-only block, so Photo and Fill users could not reach 16:9
-  or 9:16 without leaving the tab - the one thing this app is for.
-- **Share link**: shape, fit, outline detail, interior detail, softness and ink
-  threshold travel (`fsh`, `fft`, `fdp`, `fdi`, `fso`, `fth`); a mask never does,
-  so a link that asked for one reopens asking for it. `setTab` now writes the
-  hash, so "copy link" hands over the tab you were on. `app.hashGet(key)` returns
-  null for an absent key, which is how a tab tells "not in the link" apart from
-  "in the link as zero".
-- Gates: `python dev/_fillqa.py` -> every preset and a locally drawn custom mask
-  paint >= 0.98 of the shape with spill <= 0.18, no tile below 3.5 px in the
-  export, the canvas frames the frame, same parameters build the same tile list,
-  every control proven through the DOM (including a detail value typed above the
-  geometric cap: kept as typed, build uses the cap, the read-out names it), tab
-  round trip keeps the mask, nothing about the mask in the hash, number boxes
-  clamp out-of-range values and ignore cleared boxes, and a second run whose only
-  input is a pasted link reopens the same design (star, depth 3, interior 1,
-  cover, 1228 tiles) by itself.
-
-## Next actions
-1. Generator rendering: nothing open. If a tile is ever reported broken, ask
-   for the URL hash (copy-link encodes every parameter) or a saved screenshot
-   and reproduce it headlessly — do not guess.
-2. Mandala: REMOVED at the user's request (see the "built, verified, then
-   REMOVED" section). Do not re-add it unless the user asks for it again.
-3. Phase 2: the Fill tab is done (see the Fill tab section). Composer is the one
-   placeholder left: it needs a rule model that survives the share hash, plus
-   per-region motif pools / palettes. Carlson's operators to build from:
-   `ComposeTilings`, `SnubSquareTiling`, `RandomTriangleSubdivisionTiling`,
-   `CropSquareTiling`.
-4. Possible framing follow-ups: per-format saved presets, JPEG/WebP export, and
-   multi-monitor sizes (e.g. 5120 x 1440) via the custom W x H row.
-5. Rendering speed is measured (see "Rendering performance"). If a future tab
-   repaints a whole lattice per frame, re-run `dev/bench.html` before assuming
-   the Path2D cache still saves it.
-
-## License & attribution (added on request)
-- `LICENSE` = MIT for **our** code only (© 2026 pmousse — change the name if you
-  want your own legal name on it), with an explicit carve-out stating that
-  Carlson's material in this repo (`mstp/*`, the saved article copies,
-  `ref_*.png`) is NOT covered by that license.
-- `NOTICE` = the attribution text to keep with any copy. `mstp/README.md` says the
-  same thing inside the folder. `README.md` → "License & provenance".
-- The app credits Carlson visibly (`#credit`, bottom of the panel) and
-  `src/engine.js` carries the credit in its file header, so the single-file
-  `dist/truchet.html` carries it too. Nothing from Carlson's files is inlined by
-  `build.js` — it inlines `src/style.css`, `src/engine.js`, `src/app.js`,
-  `src/photo.js` and `src/fill.js` only.
-
-## Rendering performance (measured 2026-10, was never measured before)
-
-Harness: `dev/bench.html` (drives `src/engine.js` through exactly the app's
-paths: lattice -> buildTiling -> pickTile -> renderTiling, stage timings, paint
-= median of 3). Run it with:
-
-```
-chrome --headless=new --disable-gpu --no-sandbox --dump-dom "file:///D:/_truchet/dev/bench.html"
+python dev/_inkqa.py              # ink fractions: engine table vs measured, 24 motifs
+python dev/_tilesqa.py            # tile polygons browser-vs-oracle, pixel by pixel
+python dev/_appqa.py <screenshot> # the 15 picker previews vs the oracle
+python dev/_fillqa.py             # Fill tab through the real app UI
+python dev/_photoqa.py            # Photo tab through the real app UI
+python dev/_ressqa.py             # every frame format x long edge x tab: no black stage
 ```
 
-and read the `<pre id="out">` block. Numbers below are this machine, headless.
+`_tilesqa.py` and `_appqa.py` need a headless-Chrome capture first:
 
-Tiling generation and motif picking are NOT the bottleneck (<= 45 ms even at
-14k tiles). All the cost was in `traceTilePolygons` re-tessellating arcs with
-`sampleArc` for every circuit of every tile on every frame - which is why paint
-time scaled with tile count and almost not at all with canvas resolution.
+```bash
+chrome --headless=new --dump-dom  file://D:/_truchet/dev/capture.html > dev/browse/capture_dom.txt
+chrome --headless=new --window-size=1730,1010 --screenshot=D:/_truchet/dev/browse/app_qa.png        file:///D:/_truchet/index.html#m=%5C
+```
 
-Fix (committed): `getTile()` now also caches each circuit tessellated once in
-unit-tile space as a **Path2D** (one path per circuit per colour pass), and
-`traceTilePolygons` replays them under the tile transform.
-
-| case | tiles | paint before | paint after |
-|---|---|---|---|
-| checkerboard 16:9 x1 @ 3840x2160 | 360 | 177.2 ms | 1.4 ms |
-| checkerboard 16:9 x2 @ 4K | 1440 | 725.5 ms | 9.1 ms |
-| checkerboard 16:9 x4 @ 4K | 5760 | 3203.4 ms | 672.6 ms |
-| random 16:9 x4 @ 4K | 4377 | 2404.9 ms | 660.6 ms |
-| surround 16:9 x4 @ 4K | 14125 | 7400.2 ms | 1700.8 ms |
-| checkerboard 1:1 x16 @ 4K | 640 | 252.6 ms | 1.8 ms |
-| preview 1280x720, 16:9 x4, ONE full redraw | 5760 | 2653.8 ms | 362.5 ms |
-| preview 1280x720, 16:9 x1, one full redraw | 360 | 141.3 ms | 1.7 ms |
-
-Output is pixel-identical: the same 16:9 x4 screenshot before and after the
-change hashes to the same MD5 (`55eee13c43bc2f804291a21b3887a053`).
-
-Invariants to keep if this is touched again:
-- **One Path2D per circuit, per colour pass - never merge a pass into a single
-  path.** Carlson composites same-colour circuits opaquely; one merged nonzero
-  path would cancel oppositely-wound overlaps into white slits on the 8
-  self-overlapping tiles.
-- Paths are built in unit-tile space and rely on the CTM (`translate`, `scale`)
-  - do not bake tile position into them.
-- `Path2D` does not exist in Node, so `buildCircuitPaths` returns null and
-  `traceTilePolygons` keeps its original sampling path as the fallback; the
-  Node gold tests exercise the fallback, the browser exercises the cache.
-
-Accounting, fixed in the next commit: the lattice is measured in CELLS but the
-engine emits more tiles than cells - measured expansion factors are ~2.5 tiles
-per checkerboard cell and ~6 per surround unit, so 64x36 cells = 5760 tiles and
-a surround lattice at the same size = 14125. `MAX_LATTICE_TILES` now counts
-tiles actually drawn (8000), `latticeMaxT()` estimates the expansion factor from
-the base lattice and then trims by counting the real tiling, and a separate
-`MAX_DENSITY_STEP = 32` ceiling keeps the density box's top end sane. Consequence the
-user will notice: surround/offset on 16:9 clamp from x4 down to x2 (3607 tiles)
-because x4 would emit 14125. The panel line now reports both quantities -
-"64 x 36 cells x4 - 5760 tiles - 3840 x 2160 px" - and 'units' rather than
-'tiles' for the surround lattings.
-
-## User preferences
-Faithful port, not stylized. Single-file HTML, vanilla JS, no deps. Dark
-chrome, gallery-first canvas. Credit Carlson (Bridges 2018). Export PNG
-1K/2K/4K + custom, filename-encoded params, no watermark. Photo modes (4) and
-tabs plan already approved (see README.md).
+`dev/browse/` is generated scratch and is git-ignored; deleting it between
+sessions is fine, the tools recreate it.

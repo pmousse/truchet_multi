@@ -13,17 +13,21 @@ rendering engine.
 | `src/engine.js` | the rendering engine: connection sets, circuit tracing, exact arc geometry, tilings, palettes, canvas rendering. Plain JS, no dependencies (works as `<script>` and as a Node module for tests). |
 | `src/app.js`, `src/style.css`, `index.html` | the **Generator tab** app (dev layout, loads `src/` files). |
 | `build.js` → `dist/truchet.html` | **the single-file build**: everything inlined, zero external references. Open it directly anywhere. |
-| `dev/port.py` | literal Python port of Carlson's `MultiScaleTruchetPatterns.wl` — our **gold reference model**, validated against his published images. |
-| `dev/gold.json` | reference data dumped from `port.py`: all 24 named tiles (connections, circuits, sampled polygon points) + tiling configurations. |
-| `dev/check_gold.js` | fidelity test: compares `src/engine.js` against `dev/gold.json`. Run `node dev/check_gold.js`. |
-| `dev/diff_canvas.py` | pixel-diffs browser screenshots against offline Python re-renders of the identical tilings (verifies the canvas pipeline end-to-end; see below). |
-| `dev/seedrand.py` | exact Python mirrors of the engine's `mulberry32`/`seedFromString`/subdivision/motif-assignment (JS↔Python seed reproducibility). |
-| `dev/render_refs.py` | regenerates `ref2_*.png` reference renders in Carlson's display orientation (math y-up). |
-| `dev/density_ramp.json` | sampled black-area fraction of each of the 24 tiles (drives the photo-density ramp). |
-| `dev/test.html` | browser test bench (renders engine output to canvas; compare with the reference PNGs). |
-| `dev/zoom.py` | stdlib-only PNG crop/upscale helper for inspecting reference images. |
-| `mstp/` | Carlson's original Wolfram language source (downloaded for reference). |
-| `ref_*.png` | Carlson's published images used as visual references. |
+| `dev/port.py` | literal Python port of Carlson's `MultiScaleTruchetPatterns.wl` - our **oracle**: an independent model of the same geometry that every gate compares against. |
+| `dev/zoom.py` | stdlib-only PNG crop/upscale helper; `dev/_tilesqa.py` imports its reader/writer. |
+| `dev/capture.html`, `dev/inktest.html`, `dev/tiletest.html` | headless-browser probes that dump engine output (tile polygons, ink fractions, tile sheets) for the gates to measure. |
+| `dev/fillharness.js`, `dev/photoharness.js` | drive the Fill and Photo tabs through the real app UI so their gates test the shipped code path, not a copy. |
+| **gates** `dev/_inkqa.py`, `dev/_tilesqa.py`, `dev/_appqa.py`, `dev/_fillqa.py`, `dev/_photoqa.py`, `dev/_ressqa.py` | the six checks described under *Running the gates*; each exits non-zero on failure. `dev/_resspike.js` is the sweep they run against for the frame/resolution check. |
+| `refs/` | Carlson's published figures and the reference shots supplied during this project - inputs the visual checks are judged against. Not ours to redistribute. |
+| `mstp/` | Carlson's original Wolfram source and notebook, kept for study. |
+
+Everything else that used to sit in this folder - one-off comparison scripts,
+debug prints, ~150 screenshots and browser captures, exported wallpapers,
+download duplicates, `mstp.zip` and its `__MACOSX` junk - was scratch from the
+work of getting here. It is not needed to build, run or verify the app, and the
+captures regenerate on demand, so it has been deleted. Generated probe pages
+(`dev/_photopage.html`, `_fillpage.html`, `_fillshare.html`, `_resspike.html`)
+and the `dev/browse/` capture folder are now git-ignored instead of committed.
 
 ## Fidelity model
 
@@ -53,10 +57,9 @@ The engine is a direct transcription of Carlson's pipeline:
 - Canvas draw order per tile: all white circuits first, then all black
   (identical to `SquareArcTile` in the WL source).
 
-`node dev/check_gold.js` currently reports **ALL GOLD CHECKS PASSED
-(24 tiles)**: connection sets, circuit contents, sampled arc points
-(max deviation < 1e-4), arc endpoint continuity, and tiling generators all
-match the Python gold model, which itself matches Carlson's images.
+The engine and the Python oracle agree tile by tile: same connection sets,
+same circuit contents, same sampled arc points, same ink fractions, same tile
+count. That agreement is what the gates below measure on every run.
 
 ### Orientation & end-to-end verification (closed 2026-02)
 
@@ -70,16 +73,14 @@ match the Python gold model, which itself matches Carlson's images.
 2. **Name mapping authority**: tile names/indices match WL
    `SquareTileNameMapping` (`\`→24, `/`→8, … , `p`→11) — engine order is
    identical.
-3. **Browser pixel diffs** (`dev/diff_canvas.py`): screenshots of
-   `dev/test.html` re-rendered offline through the independent Python model
-   (identical tilings, fit transform, draw order): checkerboard 4 → 0.8 %,
-   surround 3 → 1.1 %, random subdivision seed `k7x2m9` → 0.65 % differing
-   pixels (antialiasing only). The Python replica of the seed pipeline
-   (`dev/seedrand.py`) reproduces JS output exactly (37/37 tiles, 0 motif
-   diffs).
-4. `ref2_checker_slash.png` / `ref2_surround3.png` (Python-rendered, math
-   y-up) visually match Carlson's published tiling figures, including the
-   self-similar surround structure and the ⅓-width bands with corner dots.
+3. **Browser output diffed against the oracle**: the tile polygons the browser
+   actually rasterises are dumped and compared pixel-by-pixel with the Python
+   model's render of the same tiles - `dev/_tilesqa.py`, currently 414 differing
+   pixels across all 24 tiles, every one of them on an arc boundary (anti-
+   aliasing), with 0 holes and 0 extra pixels anywhere away from an edge.
+4. The published tiling figures in `refs/` match our renders in the surround
+   structure, the self-similar subdivision and the ⅓-width bands with corner
+   dots.
 
 ## Status
 
@@ -94,7 +95,13 @@ match the Python gold model, which itself matches Carlson's images.
   and social ratios) and fills it edge to edge; density is a live ×1…×N multiplier
 - [x] Mandala tab (radial Truchet): built and QA-verified, then **removed** at the
   user's request; see `HANDOFF.md`
-- [ ] Phase 2+: Fill / Photo / Composer tabs
+- [x] Photo tab: multi-scale Truchet built from an uploaded image, with tone
+  matching measured inside each tile
+- [x] Fill tab: quadtree fill of an outline or mask shape, framed by the frame
+  rather than by its own tiles
+- [x] Straight-line chord tiles: experimented with, then **removed** from the
+  generator at the user's request
+- [ ] Composer tab
 
 ## Using the Generator
 
@@ -110,11 +117,8 @@ a watermark, e.g. `truchet_checkerboard64x36_k7x2m9_m-sl_pink_3840x2160.png`.
 - **Our code** (`src/`, `build.js`, `index.html`, `dev/`, `dist/`, docs): **MIT**,
   © 2026 pmousse — see `LICENSE`. Use it, modify it, sell prints made from it;
   keep the license text and the attribution.
-- **Christopher Carlson's material** in this repo — `mstp/*.wl`, `mstp/*.nb`,
-  `mstp.zip`, the saved article copies (`truchet_page*.html`, `truchet_text.txt`)
-  and the reference images (`ref_*.png`, `carlson_cells_sheet.png`,
-  `mstp_full_raw.png`, `truchet_carlson_g1.png`) — is **not** covered by that
-  license. It lives here for study and fidelity testing and is not ours to
+- **Christopher Carlson's material** in this repo — `mstp/*.wl`, `mstp/*.nb`
+  and the figures in `refs/` — is **not** covered by that license. It lives here for study and fidelity testing and is not ours to
   sublicense or redistribute.
 - `src/engine.js` was written from the published description of the geometry. It
   is not a translation of Carlson's Wolfram file and contains none of its code.
