@@ -901,17 +901,25 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
   const T = window.Truchet;
 
   /* ================= state ================= */
+  /* The starting picture is the one the app was last tested with, so opening
+   * the page with no hash reproduces that result exactly and every control
+   * reads the value it was built from. Seed is fixed on purpose: the "new"
+   * button rolls another one whenever a different pattern is wanted.
+   *
+   * fw/fh are the Custom-frame size and are inert while format is a preset
+   * (the frame then comes from res); they are kept ready so switching the
+   * format to Custom gives 16:9 at these dimensions immediately. */
   const DEFAULTS = {
-    tiling: 'chk',      // chk | grid | rand | sur | off
+    tiling: 'rand',     // chk | grid | rand | sur | off
     n: 4,               // density step: 1 = the frame's base lattice, ×2 doubles it
-    splits: 12, maxd: 4,// random subdivision
-    seed: 'k7x2m9',
-    motifs: ['/'],      // selection set: motif names, 'mix', or several of both
-    pal: 'bw',          // palette key or 'custom'
+    splits: 16, maxd: 3,// random subdivision
+    seed: 'xsg3yj',
+    motifs: ['/', '\\'],// selection set: motif names, 'mix', or several of both
+    pal: 'custom',      // palette key or 'custom'
     c1: '#101018', c2: '#3a6ea5', bg: '#f4efe6', // custom ramp
-    pad: 2,             // margin percent
+    pad: 0,             // margin percent
     format: '1:1',      // frame format key, or 'custom'
-    res: 2048,          // long edge in px when a preset format is used
+    res: 3840,          // long edge in px when a preset format is used (the 4K step)
     fw: 3840, fh: 2160, // explicit frame size when format === 'custom'
     tab: 'gen'          // 'gen' | 'photo' (other tabs register themselves)
   };
