@@ -182,6 +182,37 @@ deleted - they moved to `refs/`: `ref_motifs_big.png` (his 15 motif cells,
 generator no longer contains, kept because the images were supplied inputs).
 Full listing: `ls refs/`.
 
+## Published
+
+Repo `github.com/pmousse/truchet_multi`, branch `main`, tag `v1.0.0`. Nothing in
+`mstp/` or `refs/` is in it - Carlson's own files stay local.
+
+Live page: **https://pmousse.github.io/truchet_multi/** - GitHub Pages, deploying
+from `main` at `/`, which means it serves the repo's own `index.html` plus `src/`
+and rebuilds on every push. No duplicate copy of the app was made for it. The
+single-file build is reachable too: `.../dist/truchet.html`.
+
+The switch, for next time. In the UI it is Settings → Pages → Deploy from a
+branch → `main` → `/`. In one command, with a logged-in `gh`:
+
+```bash
+gh api -X POST repos/pmousse/truchet_multi/pages --input <<<'{"source":{"branch":"main","path":"/"},"public":true}'
+```
+
+What was checked after switching it on: the deployed page and the local page
+produce screenshots that are identical pixel for pixel (0 differing values out of
+4,830,000 at 1400x1150); the picker gate run on the deployed screenshot reads 0
+mismatches; and the Fill tab renders there rather than showing an empty stage.
+
+**Line endings, read this before believing dist is stale.** `core.autocrlf=true`
+rewrites the working tree to CRLF while the blobs are stored LF, so `dist/truchet.html`
+measures 122,311 bytes on disk (2,764 CRs) and 119,547 bytes in git and on the
+site - the difference is exactly those CRs, same content. `build.js` once matched
+a four-script block joined with `\n`, so a fresh Windows checkout made the match
+fail silently and the build aborted with "external references remain"; matching is
+tolerant now, and `.gitattributes` pins text to LF so a checkout does not depend
+on each machine's git config.
+
 ## Running the gates
 
 Run all six after any change to `src/`. Each exits non-zero on failure.

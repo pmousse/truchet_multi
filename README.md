@@ -4,6 +4,14 @@
 
 ![A multi-scale Truchet pattern made with Truchet Studio](docs/screenshot.jpg)
 
+**Open it in a browser:** <https://pmousse.github.io/truchet_multi/>
+
+That page is the app itself, served from `index.html` and `src/`, rebuilt by
+GitHub every time `main` is pushed. If you want one file instead — no server, no
+network, works from a USB stick or a folder on a plane — it is
+<https://pmousse.github.io/truchet_multi/dist/truchet.html>, the same code
+inlined by `node build.js`.
+
 This is an **experiment, not a library**. It exists because the patterns are
 beautiful and because making them behave correctly at every scale turned out to
 be an interesting problem. There is no API, no package, no supported interface
