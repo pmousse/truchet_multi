@@ -103,7 +103,7 @@ pre{padding:10px;white-space:pre-wrap}</style>
   out.push('== measured from the renderer, counted inside the tile square ==');
   out.push('dark  : fraction painted dark by the tile alone on a white ground');
   out.push('cover : fraction painted at all (grey ground, counted by change)');
-  out.push('cover agrees between parities: ' + (coverBad.length ? coverBad.join(', ') : 'yes, all 24'));
+  out.push('cover agrees between parities: ' + (coverBad.length ? coverBad.join(', ') : 'yes, all ' + T.TILE_NAMES.length));
   out.push('untouched fraction (1 - cover), averaged: ' +
     (T.TILE_NAMES.reduce((a, n) => a + (1 - cover[n]), 0) / T.TILE_NAMES.length).toFixed(3));
   out.push('dark range, even depth: ' + Math.min.apply(null, T.TILE_NAMES.map((n) => ink[n])).toFixed(3) +

@@ -57,6 +57,16 @@
       btn.title = '';
       btn.addEventListener('click', () => setTab(key));
     }
+    /* Registration happens after boot: index.html loads app.js first, so boot's
+     * refreshParamVisibility has only the Generator in TABS and leaves a later
+     * tab's params block in its default visible state - the Photo and Fill
+     * controls then sit under the Generator tab and push everything below the
+     * Motif picker out of the panel. Hide a registering tab's block now unless
+     * it is the tab actually showing. */
+    if (def.params && def.params !== 'genParams') {
+      const el = document.getElementById(def.params);
+      if (el) el.style.display = (S.tab === key) ? '' : 'none';
+    }
     /* A shared link can open straight into a tab whose script has only just
      * registered; re-apply so panel and canvas match the hash. */
     if (S.tab === key) applyTab();
@@ -261,7 +271,9 @@
   }
   /* The motif cells form a pool: one cell = that motif everywhere, several
    * cells (ctrl+click) = one of them chosen at random per tile, exactly like
-   * 'mix' but restricted to the chosen subset. 'mix' means all 15. */
+   * 'mix' but restricted to the chosen subset. 'mix' means every motif there
+   * is - the count is read from the engine rather than written here, so the
+   * wording stays true when a family is added. */
   function motifPool() {
     const sel = (S.motifs || []).filter(
       (m) => m === 'mix' || T.MOTIF_NAMES.includes(m));
@@ -386,6 +398,8 @@
 
   /* ================= export ================= */
   function sanitizeMotif(m) {
+    /* Filenames: motif names travel in the export name, and a name holding a
+     * path separator would silently make a subdirectory (or be rejected). */
     return ({ '/': 'sl', '\\': 'bs', '|': 'vb', '+': 'pl',
       '.': 'd', '-': 'mi' })[m] || m;
   }
@@ -534,14 +548,16 @@
   }
   function setBaseScale(v) { S.n = +v || 1; onChange(); }
 
-  /* motif picker: the 15 tiles from Carlson's motifs figure, plus a mix cell */
+  /* motif picker: Carlson's 15 tiles from his motifs figure, and a mix cell
+   * on top */
   const grid = $('motifGrid');
   let previewCanvases = [];
   function buildMotifGrid() {
     grid.innerHTML = '';
     const mix = document.createElement('canvas');
     mix.className = 'mix';
-    mix.title = 'mix — random from all 15 (ctrl+click to combine with others)';
+    mix.title = 'mix — random from all ' + T.MOTIF_NAMES.length +
+      ' (ctrl+click to combine with others)';
     mix.dataset.motif = 'mix';
     grid.appendChild(mix);
     previewCanvases = [mix];
@@ -607,7 +623,8 @@
     if (S.motifs.length > 1) {
       el.textContent = `random pool of ${S.motifs.length}: ${S.motifs.join('  ')}`;
     } else if (S.motifs[0] === 'mix') {
-      el.textContent = 'mix — random from all 15, one per tile';
+      el.textContent = 'mix — random from all ' + T.MOTIF_NAMES.length +
+        ', one per tile';
     } else {
       el.textContent = `one motif everywhere: ${S.motifs[0]}`;
     }

@@ -35,6 +35,10 @@ body.panel-hidden #stage { left: 0; }
   background: var(--panel-bg);
   border-right: 1px solid var(--panel-line);
   display: flex; flex-direction: column;
+  /* the panel is taller than a short viewport once Frame, Color, Output and the
+   * Motif picker are all in it: without this the tail is unreachable rather than
+   * scrollable */
+  overflow-y: auto; overscroll-behavior: contain;
   transition: transform .25s ease;
   z-index: 10;
 }
@@ -86,6 +90,7 @@ button.primary:hover { filter: brightness(1.1); }
 }
 #seedRow input { font-family: ui-monospace, Consolas, monospace; }
 #motifGrid {
+  /* 16 cells: mix + Carlson's 15 motifs. Four columns tiles them exactly. */
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
   margin-top: 6px;
 }
@@ -432,6 +437,8 @@ const Truchet = (function () {
     'tn', 'te', 'ts', 'tw'
   ];
 
+
+
   /* Fraction of a tile's square covered by its dark circuits, measured from this
    * engine's own geometry (dev/_inkqa.py rasterizes each tile and counts sample
    * points inside its circuits -- the same polygons renderTiling composites).
@@ -449,14 +456,14 @@ const Truchet = (function () {
    * too small by roughly the canvas-to-square area ratio.
    *
    * The same harness also renders each motif on a grey ground and counts what
-   * changed, which measures how much of the square the tile paints at all: 0.98
-   * to 0.99 for all 24 motifs, at either parity. Two things follow, and inktest
-   * checks both. A tile's ink and its inverted ink add up to that coverage - the
-   * two circuit classes partition the area the tile paints - so inverted coverage
-   * is 1 - ink to within the 1-2% a tile leaves untouched; and a tile in a
-   * multi-scale tiling effectively repaints its own square rather than overlaying
-   * what was drawn below it, so per-tile tone control is real. dev/_inkqa.py
-   * re-runs the measurement and gates this table against it.
+   * changed, which measures how much of the square the tile paints at all. For
+   * Carlson's 24 that is 0.98 to 0.99, at either parity. A tile's ink and its
+   * inverted ink add up to that coverage - the two colour classes partition the
+   * area the tile paints - so inverted coverage is 1 - ink to
+   * within the 1-2% an arc tile leaves untouched; and a tile in a multi-scale
+   * tiling effectively repaints its own square rather than overlaying what was
+   * drawn below it, so per-tile tone control is real. dev/_inkqa.py re-runs the
+   * measurement and gates this table against it.
    */
   const MOTIF_INK = {
     '+.': 0.1729,
@@ -469,7 +476,7 @@ const Truchet = (function () {
     '+': 0.5588,
     anw: 0.5629, ane: 0.5629, ase: 0.5629, asw: 0.5631,
     'x.': 0.6543
-  };
+      };
 
   /* ---------- circuits (Carlson's SquareConnectionCircuits) ----------
    * Walk from every starting point 1..8: first step internal, then
@@ -643,8 +650,12 @@ const Truchet = (function () {
     tileCache.set(connIdx, tile);
     return tile;
   }
-  function connIdxByName(name) { return NAMED_TILES[name]; }
-  function nameForConnIdx(idx) { return TILE_NAME[idx] || ('#' + idx); }
+  function connIdxByName(name) {
+    return NAMED_TILES[name];
+  }
+  function nameForConnIdx(idx) {
+    return TILE_NAME[idx] || ('#' + idx);
+  }
 
   /* ---------- tilings ----------
    * Tiling = list of {x, y, s} (axis-aligned square tiles, math coords).
@@ -930,6 +941,16 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
       btn.title = '';
       btn.addEventListener('click', () => setTab(key));
     }
+    /* Registration happens after boot: index.html loads app.js first, so boot's
+     * refreshParamVisibility has only the Generator in TABS and leaves a later
+     * tab's params block in its default visible state - the Photo and Fill
+     * controls then sit under the Generator tab and push everything below the
+     * Motif picker out of the panel. Hide a registering tab's block now unless
+     * it is the tab actually showing. */
+    if (def.params && def.params !== 'genParams') {
+      const el = document.getElementById(def.params);
+      if (el) el.style.display = (S.tab === key) ? '' : 'none';
+    }
     /* A shared link can open straight into a tab whose script has only just
      * registered; re-apply so panel and canvas match the hash. */
     if (S.tab === key) applyTab();
@@ -1134,7 +1155,9 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
   }
   /* The motif cells form a pool: one cell = that motif everywhere, several
    * cells (ctrl+click) = one of them chosen at random per tile, exactly like
-   * 'mix' but restricted to the chosen subset. 'mix' means all 15. */
+   * 'mix' but restricted to the chosen subset. 'mix' means every motif there
+   * is - the count is read from the engine rather than written here, so the
+   * wording stays true when a family is added. */
   function motifPool() {
     const sel = (S.motifs || []).filter(
       (m) => m === 'mix' || T.MOTIF_NAMES.includes(m));
@@ -1259,6 +1282,8 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
 
   /* ================= export ================= */
   function sanitizeMotif(m) {
+    /* Filenames: motif names travel in the export name, and a name holding a
+     * path separator would silently make a subdirectory (or be rejected). */
     return ({ '/': 'sl', '\\': 'bs', '|': 'vb', '+': 'pl',
       '.': 'd', '-': 'mi' })[m] || m;
   }
@@ -1407,14 +1432,16 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
   }
   function setBaseScale(v) { S.n = +v || 1; onChange(); }
 
-  /* motif picker: the 15 tiles from Carlson's motifs figure, plus a mix cell */
+  /* motif picker: Carlson's 15 tiles from his motifs figure, and a mix cell
+   * on top */
   const grid = $('motifGrid');
   let previewCanvases = [];
   function buildMotifGrid() {
     grid.innerHTML = '';
     const mix = document.createElement('canvas');
     mix.className = 'mix';
-    mix.title = 'mix — random from all 15 (ctrl+click to combine with others)';
+    mix.title = 'mix — random from all ' + T.MOTIF_NAMES.length +
+      ' (ctrl+click to combine with others)';
     mix.dataset.motif = 'mix';
     grid.appendChild(mix);
     previewCanvases = [mix];
@@ -1480,7 +1507,8 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     if (S.motifs.length > 1) {
       el.textContent = `random pool of ${S.motifs.length}: ${S.motifs.join('  ')}`;
     } else if (S.motifs[0] === 'mix') {
-      el.textContent = 'mix — random from all 15, one per tile';
+      el.textContent = 'mix — random from all ' + T.MOTIF_NAMES.length +
+        ', one per tile';
     } else {
       el.textContent = `one motif everywhere: ${S.motifs[0]}`;
     }

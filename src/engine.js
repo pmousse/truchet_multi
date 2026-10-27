@@ -107,6 +107,8 @@ const Truchet = (function () {
     'tn', 'te', 'ts', 'tw'
   ];
 
+
+
   /* Fraction of a tile's square covered by its dark circuits, measured from this
    * engine's own geometry (dev/_inkqa.py rasterizes each tile and counts sample
    * points inside its circuits -- the same polygons renderTiling composites).
@@ -124,14 +126,14 @@ const Truchet = (function () {
    * too small by roughly the canvas-to-square area ratio.
    *
    * The same harness also renders each motif on a grey ground and counts what
-   * changed, which measures how much of the square the tile paints at all: 0.98
-   * to 0.99 for all 24 motifs, at either parity. Two things follow, and inktest
-   * checks both. A tile's ink and its inverted ink add up to that coverage - the
-   * two circuit classes partition the area the tile paints - so inverted coverage
-   * is 1 - ink to within the 1-2% a tile leaves untouched; and a tile in a
-   * multi-scale tiling effectively repaints its own square rather than overlaying
-   * what was drawn below it, so per-tile tone control is real. dev/_inkqa.py
-   * re-runs the measurement and gates this table against it.
+   * changed, which measures how much of the square the tile paints at all. For
+   * Carlson's 24 that is 0.98 to 0.99, at either parity. A tile's ink and its
+   * inverted ink add up to that coverage - the two colour classes partition the
+   * area the tile paints - so inverted coverage is 1 - ink to
+   * within the 1-2% an arc tile leaves untouched; and a tile in a multi-scale
+   * tiling effectively repaints its own square rather than overlaying what was
+   * drawn below it, so per-tile tone control is real. dev/_inkqa.py re-runs the
+   * measurement and gates this table against it.
    */
   const MOTIF_INK = {
     '+.': 0.1729,
@@ -144,7 +146,7 @@ const Truchet = (function () {
     '+': 0.5588,
     anw: 0.5629, ane: 0.5629, ase: 0.5629, asw: 0.5631,
     'x.': 0.6543
-  };
+      };
 
   /* ---------- circuits (Carlson's SquareConnectionCircuits) ----------
    * Walk from every starting point 1..8: first step internal, then
@@ -318,8 +320,12 @@ const Truchet = (function () {
     tileCache.set(connIdx, tile);
     return tile;
   }
-  function connIdxByName(name) { return NAMED_TILES[name]; }
-  function nameForConnIdx(idx) { return TILE_NAME[idx] || ('#' + idx); }
+  function connIdxByName(name) {
+    return NAMED_TILES[name];
+  }
+  function nameForConnIdx(idx) {
+    return TILE_NAME[idx] || ('#' + idx);
+  }
 
   /* ---------- tilings ----------
    * Tiling = list of {x, y, s} (axis-aligned square tiles, math coords).

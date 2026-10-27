@@ -181,11 +181,24 @@ TILE_NAME_MAPPING = {
 
 TILE_ORDER = sorted(TILE_NAME_MAPPING, key=lambda k: TILE_NAME_MAPPING[k])
 
-# The 15 tiles Carlson shows in his motifs figure, in his grid order -- this is
-# what the app's motif picker offers (see src/engine.js MOTIF_NAMES).
-MOTIF_NAMES = ['\\', '/', '-', '|', '+.', 'x.', '+',
-               'fnw', 'fne', 'fse', 'fsw',
-               'tn', 'te', 'ts', 'tw']
+
+# The 15 tiles the app's motif picker offers, in picker order (see
+# src/engine.js MOTIF_NAMES): Carlson's set from his motifs figure.
+MOTIF_NAMES = ['\\',
+               '/',
+               '-',
+               '|',
+               '+.',
+               'x.',
+               '+',
+               'fnw',
+               'fne',
+               'fse',
+               'fsw',
+               'tn',
+               'te',
+               'ts',
+               'tw']
 
 
 def tile_connections(name):
@@ -394,6 +407,26 @@ class Canvas:
 
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
+
+
+
+def paint_motif(canvas, name, to_screen, scale, white=WHITE, black=BLACK,
+                invert=False, odd=False):
+    """Paint one motif on a canvas in screen coords.
+
+    Carlson's tiles are two sets of circuit polygons, white laid first then
+    black - the order SquareArcTile uses. Both swap their colours on odd depth exactly as renderTiling
+    does, which is why the gates can compare a multi-scale tiling tile by tile.
+
+    to_screen maps unit-tile coords to canvas pixels.
+    """
+    white_circs, black_circs = tile_circuits(name)
+    if odd != invert:
+        white_circs, black_circs = black_circs, white_circs
+    for grp, col in ((white_circs, white), (black_circs, black)):
+        for circ in grp:
+            canvas.fill_poly([to_screen(p) for p in
+                              arc_circuit_polygon(2, circ)], col, rule='nonzero')
 
 
 def render_circuits(canvas, white_circs, black_circs, pps=2, world=1.0, origin=(0, 0)):

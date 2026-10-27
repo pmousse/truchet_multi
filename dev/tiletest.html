@@ -17,8 +17,21 @@ const N = +q('g', 2);
 const tiles = [];
 for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) tiles.push({ x: c, y: r, s: 1 });
 T.fitTransform(ctx, tiles, W, H, +q('pd', 0.02));
+/* m2 alternates two motifs on a checkerboard; mr=1&sd=<seed> picks between m1
+ * and m2 at random per tile instead. Both are diagnostics: how a pair of tiles
+ * is chosen changes the network the edges form, and for pairs whose tiles lean
+ * opposite ways an alternating grid closes them into shapes rather than letting
+ * them run. */
+const m1 = q('m', '/');
+const m2 = q('m2', null);
+const rnd = q('mr', null) === '1'
+  ? T.mulberry32(T.seedFromString(q('sd', 'maze')))
+  : null;
 T.renderTiling(ctx, tiles, {
-  pickTile: () => T.connIdxByName(q('m', '/')),
+  pickTile: m2 === null
+    ? () => T.connIdxByName(m1)
+    : (depth, t) => T.connIdxByName(rnd ? (rnd() < 0.5 ? m2 : m1)
+      : (((t.x + t.y) % 2) ? m2 : m1)),
   palette: pal
 });
 </script>

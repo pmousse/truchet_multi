@@ -28,6 +28,10 @@ body.panel-hidden #stage { left: 0; }
   background: var(--panel-bg);
   border-right: 1px solid var(--panel-line);
   display: flex; flex-direction: column;
+  /* the panel is taller than a short viewport once Frame, Color, Output and the
+   * Motif picker are all in it: without this the tail is unreachable rather than
+   * scrollable */
+  overflow-y: auto; overscroll-behavior: contain;
   transition: transform .25s ease;
   z-index: 10;
 }
@@ -79,6 +83,7 @@ button.primary:hover { filter: brightness(1.1); }
 }
 #seedRow input { font-family: ui-monospace, Consolas, monospace; }
 #motifGrid {
+  /* 16 cells: mix + Carlson's 15 motifs. Four columns tiles them exactly. */
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
   margin-top: 6px;
 }

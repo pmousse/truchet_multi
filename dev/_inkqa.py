@@ -10,11 +10,12 @@ dev/inktest.html measures it in a real browser canvas: one tile rendered alone a
 240x240, counting pixels inside the tile square (fitTransform fits a tile
 including its wings, so counting the whole canvas understates everything). The
 same harness renders each motif on a grey ground and counts what changed, which
-measures how much of the square the tile paints at all - 0.98 to 0.99 - and it
-measures the inverted tile's dark fraction directly. Both are gated here:
+measures how much of the square the tile paints at all - 0.98 to 0.99 for
+Carlson's 24, whose circuits leave the corners alone - and it measures the
+inverted tile's dark fraction directly. Both are gated here:
 
-  ink + inverted == cover     the two circuit colour classes partition the area
-                              the tile actually paints
+  ink + inverted == cover     the two colour classes partition the area the tile
+                              actually paints, circuit against circuit
   cover close to 1            a tile leaves almost nothing of what is below it,
                               which is why per-tile tone works
 

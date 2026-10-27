@@ -1,9 +1,16 @@
-"""_tilesqa.py -- verify the browser-rendered 24 tiles against the Python oracle.
+"""_tilesqa.py -- verify the browser-rendered tiles against the Python oracle.
 
 1. parses dev/browse/capture_dom.txt (chrome --dump-dom of dev/capture.html)
 2. decodes the 256px-per-tile sheet (fitTransform pad 0) saved by the live engine
-3. renders the same polygons with the same mapping in Python (dev/port.py)
+3. renders the same motif with the same mapping in Python (dev/port.py) - the
+   circuit fills the engine composites
 4. compares pixel-by-pixel, reporting deep-interior violations (holes/slits)
+
+The sheet holds every name in engine TILE_NAMES, six per row, so its row count -
+and this comparison - follows the tile count rather than a fixed grid.
+
+Regenerate the dump before running:
+  chrome --headless=new --dump-dom file://.../dev/capture.html > dev/browse/capture_dom.txt
 
 Usage: python dev/_tilesqa.py [name1 name2 ...]
 """
@@ -65,7 +72,10 @@ def main():
     names = json.loads(subprocess.check_output(
         ['node', '-e', 'console.log(JSON.stringify(require("./src/engine.js").TILE_NAMES))'],
         cwd='.').decode())
-    assert len(names) == cols * rows, (len(names), cols * rows)
+    # the capture page lays names out six per row and rounds the sheet up, so the
+    # last row can be part-blank; the comparison walks names, not cells, so only
+    # the sheet's capacity is checked here
+    assert len(names) <= cols * rows, (len(names), cols * rows)
 
     sc, offX, offY = fit_single(S)
 
@@ -85,12 +95,9 @@ def main():
             base = ((cy0 + y) * W + cx0) * 3
             ch.append([1 if lum(base + x * 3) < 140 else 0 for x in range(S)])
 
-        white, black = port.tile_circuits(name)
+        # the oracle paints the motif the way the engine does, by circuit fills
         cv = Canvas(S, S, (255, 255, 255))
-        for grp, col in ((white, (255, 255, 255)), (black, (0, 0, 0))):
-            for circ in grp:
-                pts = port.arc_circuit_polygon(2, circ)
-                cv.fill_poly([screen(p) for p in pts], col, rule='nonzero')
+        port.paint_motif(cv, name, screen, sc)
         py = [[1 if cv.px[(y * S + x) * 3] < 128 else 0 for x in range(S)]
               for y in range(S)]
 
