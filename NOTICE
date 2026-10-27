@@ -30,5 +30,12 @@ Our own work (MIT, © 2026 pmousse)
   the direction and with the test images of pmousse, who selected the direction,
   judged the results and owns the project. See README.md.
 
+Why this file exists
+  LICENSE is kept in its canonical MIT form, with nothing added to it, so that
+  licence tooling on either side reads it as what it is. Everything specific to
+  this project — what the licence covers, the credit owed to Christopher Carlson,
+  the material deliberately not distributed here, how the code came to be — is
+  stated above instead of inside the legal text.
+
 If you distribute this project, please keep this file, the LICENSE text and the
 in-app credit to Christopher Carlson that the app shows in its own panel.

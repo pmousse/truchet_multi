@@ -3,36 +3,14 @@ MIT License
 Copyright (c) 2026 pmousse
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files — specifically the original
-code and text authored in this repository (src/, build.js, index.html, dev/, docs/,
-README.md, HANDOFF.md, LICENSE, NOTICE and the build output dist/truchet.html) — to deal
-in the Software without restriction, including without limitation the rights to
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software is furnished to do so,
-subject to the following conditions:
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.  Please also preserve the
-attribution described in NOTICE (the underlying patterns and mathematics are
-Christopher Carlson's).
-
-THIRD-PARTY MATERIAL IS NOT DISTRIBUTED IN THIS REPOSITORY
-----------------------------------------------------------
-The design and mathematics this project implements belong to Christopher
-Carlson.  His original Wolfram Language source, his example notebook, and the
-published figures and article copies that were used while checking this work
-against his are copyrighted by their author, are not ours to redistribute, and
-are therefore NOT included in a clone of this repository.  They exist only in
-the author's own working copy (mstp/, refs/), and .gitignore lists them so they
-cannot be committed by accident.
-
-The fidelity checks that those figures were used for are described in
-HANDOFF.md, and the automated gates compare the app against dev/port.py, a
-Python model written from Carlson's published description of the geometry.
-
-The engine in src/engine.js is an independent reimplementation, written in
-JavaScript, of the geometry and algorithm Carlson publishes.  It is not a
-translation of his source file, and no code from his file is copied into it.
+copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,

@@ -124,12 +124,14 @@ and the division is not neat. `HANDOFF.md` records the actual back-and-forth,
 including the mistakes.
 
 - **Our code** (`src/`, `dev/`, `build.js`, `index.html`, `dist/`, `docs/`,
-  README, HANDOFF, LICENSE, NOTICE): **MIT**, © 2026 pmousse. See `LICENSE`.
-  Use it, modify it, sell prints made from it; keep the licence text and the
-  attribution.
+  README, HANDOFF, LICENSE, NOTICE): **MIT**, © 2026 pmousse. See `LICENSE` —
+  the plain MIT text, with nothing added to it, so that licence tooling reads it
+  as what it is. Use it, modify it, sell prints made from it; keep the licence
+  text and the attribution spelled out in `NOTICE`.
 - **Carlson's own material is not in this repository and is not licensed here.**
   His Wolfram source, notebook and the figures used while checking this work are
   copyrighted by their author and are not ours to redistribute; they are kept in
   the author's local working copy only and are git-ignored.
 - `NOTICE` carries the attribution that should travel with any copy, and the app
-  states the credit in its own panel.
+  states the credit in its own panel. The pattern credit is Carlson's; the
+  material not distributed here is listed there too.
