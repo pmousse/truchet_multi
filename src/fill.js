@@ -37,6 +37,7 @@
   'use strict';
   const TR = window.Truchet;
   const app = window.TruchetApp;
+  const $ = (id) => document.getElementById(id);
   if (!TR || !app) {
     app && app.showError('fill tab: app shell missing');
     return;
@@ -56,7 +57,7 @@
   const FILL_MAX_DEPTH = 8;       // hard ceiling: a cell can shrink to 1/256
   const COVER_EPS = 1e-9;
 
-  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const clamp = TR.clamp;                    // one implementation, in the engine
 
   const F = {
     shape: 'circle',      // a preset key, or 'custom' (an uploaded mask)
@@ -449,7 +450,6 @@
 
   /* ---------- panel wiring ---------- */
   function wireUI() {
-    const $ = (id) => document.getElementById(id);
     const bindNumber = (id, key) => {
       const el = $(id);
       if (!el) return;
@@ -521,7 +521,6 @@
   }
 
   function syncLabel() {
-    const $ = (id) => document.getElementById(id);
     const L = app.lattice();
     const cap = depthCap(L);
     const out = $('outFdepth');

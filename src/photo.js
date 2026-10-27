@@ -47,7 +47,7 @@
   const PHOTO_TONE_DITHER = 2;     // splits allowed purely to get the tone right
   const INK_JITTER = 0.05;         // tone slack that still counts as a match
 
-  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const clamp = TR.clamp;                    // one implementation, in the engine
 
   /* Photo-only state, deliberately outside app's state so it cannot leak into
    * the share link. */

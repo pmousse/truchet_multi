@@ -255,25 +255,10 @@ const Truchet = (function () {
     return segs;
   }
 
-  /* Sampled polygon points of a circuit (used by tests & SVG export). */
-  function circuitPolygon(circuit, stepDeg = 5) {
-    const segs = circuitSegments(circuit);
-    const pts = [];
-    for (const s of segs) {
-      let sample;
-      if (s.kind === 'line') sample = [s.p1, s.p2];
-      else {
-        const steps = Math.max(1, Math.round(Math.abs(s.a2 - s.a1) / (stepDeg * Math.PI / 180)));
-        sample = [];
-        for (let i = 0; i <= steps; i++) {
-          const a = s.a1 + (s.a2 - s.a1) * i / steps;
-          sample.push([s.c[0] + s.rx * Math.cos(a), s.c[1] + s.ry * Math.sin(a)]);
-        }
-      }
-      if (pts.length) pts.push(...sample.slice(1)); else pts.push(...sample);
-    }
-    return pts;
-  }
+  /* ---------- shared numeric helper ----------
+   * One clamp for the whole project: the tabs each used to carry a private
+   * copy of this identical line. */
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
   /* ---------- tile cache ---------- */
   const tileCache = new Map();
@@ -549,14 +534,17 @@ const Truchet = (function () {
   }
 
   return {
-    PPS, NP, PT, SIDE, INWARD, coordinate,
-    CONNECTION_SETS, TILE_NAMES, MOTIF_NAMES, MOTIF_INK, NAMED_TILES,
+    /* Only what something outside this file actually calls. The arc plumbing
+     * (points, connection sets, circuit tracing, the tile cache, colour
+     * parsing) is used from inside the engine and stays private. */
+    clamp, coordinate,
+    TILE_NAMES, MOTIF_NAMES, MOTIF_INK, NAMED_TILES,
     connIdxByName, nameForConnIdx,
     mulberry32, seedFromString, randSeed,
-    traceCircuits, circuitSegments, circuitPolygon, sampleArc, getTile, tileDepth,
+    tileDepth,
     randomSubdivision, gridTiling, checkerboardTiling, surroundTiling,
-    offsetSurroundTiling, fillTiling, dedupTiles,
-    renderTiling, fitTransform, PALETTES, parseColor, lerpColor
+    offsetSurroundTiling, fillTiling,
+    renderTiling, fitTransform, PALETTES, lerpColor
   };
 })();
 if (typeof module !== 'undefined') module.exports = Truchet;

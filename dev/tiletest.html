@@ -25,7 +25,7 @@ T.fitTransform(ctx, tiles, W, H, +q('pd', 0.02));
 const m1 = q('m', '/');
 const m2 = q('m2', null);
 const rnd = q('mr', null) === '1'
-  ? T.mulberry32(T.seedFromString(q('sd', 'maze')))
+  ? T.mulberry32(T.seedFromString(q('sd', 'pair')))
   : null;
 T.renderTiling(ctx, tiles, {
   pickTile: m2 === null

@@ -131,13 +131,30 @@ holes inside tiles, "broken lens" segments, pattern bleeding off canvas edge.
   enters the share hash. Harnesses: `dev/photoharness.js`, `dev/fillharness.js`;
   gates: `dev/_photoqa.py`, `dev/_fillqa.py` (the Fill gate also drives the
   aspect/frame cases through the real UI).
+The engine exports only what something outside it actually calls. The arc
+plumbing (connection points, connection sets, circuit tracing, the tile cache)
+is used from inside the engine and stays private; `TILE_NAMES` and
+`nameForConnIdx` are exported **only** because `dev/_tilesqa.py` requires them
+through node. `clamp` is defined once, in the engine, and `app.js`, `photo.js`
+and `fill.js` each alias it - they used to carry three identical private copies.
+Pruning an export here is safe only after checking the gates, which read the
+engine both as a module (`require`) and as text (a regex over
+`const MOTIF_INK = {…};`).
+
 - `dev/port.py` - Python oracle (`fill_poly` now nonzero default).
 
 Tooling that exists and is worth keeping: `dev/port.py`, `dev/zoom.py` (PNG
-read/write, palette-capable), the probe pages `dev/capture.html`,
-`dev/inktest.html`, `dev/tiletest.html`, `dev/bench.html` was dropped, and the
-gates `dev/_inkqa.py`, `dev/_tilesqa.py`, `dev/_appqa.py`, `dev/_fillqa.py`,
-`dev/_photoqa.py`, `dev/_ressqa.py`.
+read/write, palette-capable - imported by `_tilesqa.py` from inside a `try`, so a
+grep that only looks at column 0 will miss it and a cleanup will delete a gate),
+the probe pages `dev/capture.html` and `dev/inktest.html` (both are **inputs to
+the gates** - `dev/_inkqa.py` and `dev/_tilesqa.py` load them) and
+`dev/tiletest.html` (a manual tile-pair probe no gate uses),
+`dev/_resspike.js` (read by `dev/_ressqa.py`, which injects it as a script), and
+the gates `dev/_inkqa.py`, `dev/_tilesqa.py`, `dev/_appqa.py`, `dev/_fillqa.py`,
+`dev/_photoqa.py`, `dev/_ressqa.py`. A gate writes its own scratch pages -
+`dev/_fillpage.html`, `dev/_fillshare.html`, `dev/_photopage.html`,
+`dev/_resspike.html` - and those are generated and gitignored, not hand-kept.
+`dev/bench.html` was dropped.
 
 Deleted as scratch during cleanup (all reproducible, none needed to build or
 verify): the fidelity one-offs `dev/gold.json`, `dev/check_gold.js`,

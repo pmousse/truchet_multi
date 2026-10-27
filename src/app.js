@@ -176,7 +176,7 @@
   }
 
   /* ================= frame geometry ================= */
-  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const clamp = T.clamp;                     // one implementation, in the engine
   function gcd(a, b) {
     a = Math.abs(a); b = Math.abs(b);
     while (b) { const t = b; b = a % b; a = t; }
@@ -435,9 +435,6 @@
      * path separator would silently make a subdirectory (or be rejected). */
     return ({ '/': 'sl', '\\': 'bs', '|': 'vb', '+': 'pl',
       '.': 'd', '-': 'mi' })[m] || m;
-  }
-  function motifPart(isMix, pool) {
-    return isMix ? 'mix' : pool.map(sanitizeMotif).join('-');
   }
   function exportName(w, h) {
     const L = lattice();

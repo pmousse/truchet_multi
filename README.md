@@ -32,7 +32,7 @@ size of your own; from a modest 1K image up to 4K and beyond, at the width and
 height you ask for. What gets saved is the pattern drawn at that size, not an
 enlarged screenshot of the canvas.
 
-## The four tabs
+## The three tabs
 
 **Generator** — the pattern engine: the controls described above,
 applied to a blank canvas.
@@ -49,7 +49,10 @@ asking for the image again.
 (circle, heart, star, letterforms…) or paste your own mask, and the tiling is
 built to fill that region, scaled to the frame rather than cropped to it.
 
-**Composer** — planned, not built.
+Those three are what the page offers. A fourth idea, **Composer** - assembling
+patterns out of pieces rather than generating one - is something I have not
+built, so the tab row does not advertise it. Whether it ever appears is not
+promised; this is an exploration, not a product with a roadmap.
 
 ## Filling the frame
 
