@@ -12,22 +12,44 @@ change and make prints from.
 
 ## What it makes
 
-A single square tile, drawn as interlocking arcs, repeated and then subdivided:
-some cells stay large, their neighbours split into four smaller tiles, some of
-those split again. Where a large tile's motif runs off its edge, the smaller
-tiles beside it carry the same band at their own size, so the line continues
-across scales instead of terminating. Odd-depth tiles draw the motif inverted,
-which is what keeps the pattern reading as one surface rather than a mosaic of
-patches.
+**Pictures in whatever shape and size you ask for.** The output is a pattern
+filled into a frame you choose: a phone wallpaper, a desktop wallpaper, an
+ultrawide strip, a square post, a portrait image for a feed, or a size you type
+yourself. The picture above is one result out of many the same app will give
+you.
 
-The result is the thing in the picture above: one pattern that stays continuous
-while its detail changes size.
+It is **interactive**. Everything happens in a panel of plain controls beside the
+canvas, and every change redraws the picture immediately: how the tiles are
+laid, how dense they are, how much they break into smaller tiles, which motifs
+are in the mix, which colours the depth passes through, what shape the frame is.
+Nothing is buried in a dialog, nothing has to be compiled, and there are no
+sliders to squint at - the values go in boxes you can type. Ask for another
+pattern and it makes one, so the same settings keep producing results you have
+not seen.
+
+It **exports pictures**, not previews. Square, portrait, wide, ultrawide, or a
+size of your own; from a modest 1K image up to 4K and beyond, at the width and
+height you ask for. What gets saved is the pattern drawn at that size, not an
+enlarged screenshot of the canvas.
+
+The word "square" only belongs to the tile, never to the picture. The tile is a
+square because that is how the motif's arcs meet its edges; the lattice laid
+into your frame is rectangular, and it is laid out *for* that frame. A 21:9
+frame at 4K is a lattice of 63 columns by 27 rows - about 4250 tiles - not a
+square pattern trimmed into a strip, and nothing is cropped or letterboxed.
+
+**Why it holds together across sizes.** Within one picture some cells stay large,
+their neighbours split into four smaller tiles, and some of those split again.
+Where a large tile's motif runs off its edge, the smaller tiles beside it carry
+the same band at their own size, so the line continues across scales instead of
+stopping at a boundary. Tiles at an odd subdivision depth draw the motif
+inverted, which is what keeps the whole frame reading as one surface rather than
+a mosaic of patches.
 
 ## The four tabs
 
-**Generator** — the pattern engine. A seed, a tiling rule (checkerboard, grid,
-random subdivision, surround, plain), a density multiplier, subdivision splits
-and depth, a palette or your own colour ramp, and a motif selection.
+**Generator** — the pattern engine: the controls described above,
+applied to a blank canvas.
 
 **Photo** — a picture becomes a pattern. Upload an image; it is sampled, and
 each tile is given the motif whose own black-and-white ink fraction is closest
@@ -45,13 +67,14 @@ built to fill that region, scaled to the frame rather than cropped to it.
 
 ## Filling the frame
 
-The pattern is generated *for* the target frame rather than trimmed to fit it, so
-wallpapers and social posts get the lattice they were meant to have: 16:9 and 21:9
-for desktop, 9:16 for phone, 1:1, 4:5, 3:4, 2:3 for social, plus any size you
-type. Nothing is cropped and nothing is letterboxed. Export runs the same lattice
-you see on screen at full resolution — 1K through 4K+, or your own width and
-height — and the filename records the tiling, lattice, seed, motifs and palette
-instead of putting a watermark on your picture.
+The pattern is generated *for* the frame rather than trimmed to fit it, so a
+wide desktop wallpaper, a phone background and a square social post each get the
+lattice they were meant to have instead of a square pattern cut down to size.
+Nothing is cropped and nothing is letterboxed, and the export is the same
+lattice you see on screen drawn at the full size you chose.
+
+The saved file is named from what made it — tiling, lattice, seed, motifs and
+palette — rather than carrying a watermark over your picture.
 
 Everything you set lives in the URL hash, including which tab you were on, so
 "copy link" hands over the pattern exactly as you left it.
