@@ -4,8 +4,8 @@ Copyright (c) 2026 pmousse
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files — specifically the original
-code and text authored in this repository (src/, build.js, index.html, dev/,
-README.md, HANDOFF.md, NOTICE and the build output dist/truchet.html) — to deal
+code and text authored in this repository (src/, build.js, index.html, dev/, docs/,
+README.md, HANDOFF.md, LICENSE, NOTICE and the build output dist/truchet.html) — to deal
 in the Software without restriction, including without limitation the rights to
 use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
 the Software, and to permit persons to whom the Software is furnished to do so,
@@ -16,20 +16,19 @@ copies or substantial portions of the Software.  Please also preserve the
 attribution described in NOTICE (the underlying patterns and mathematics are
 Christopher Carlson's).
 
-WHAT THIS LICENSE DOES NOT COVER
---------------------------------
-Material in this repository that belongs to other people stays under its own
-terms.  It is kept here for study, reference and fidelity testing only, and is
-not licensed, sublicensed or redistributed by this license:
+THIRD-PARTY MATERIAL IS NOT DISTRIBUTED IN THIS REPOSITORY
+----------------------------------------------------------
+The design and mathematics this project implements belong to Christopher
+Carlson.  His original Wolfram Language source, his example notebook, and the
+published figures and article copies that were used while checking this work
+against his are copyrighted by their author, are not ours to redistribute, and
+are therefore NOT included in a clone of this repository.  They exist only in
+the author's own working copy (mstp/, refs/), and .gitignore lists them so they
+cannot be committed by accident.
 
-  - mstp/MultiScaleTruchetPatterns.wl
-    mstp/MultiScaleTruchetPatternExamples.nb
-        Christopher Carlson's original Wolfram Language source and examples.
-  - truchet_page.html, truchet_page2.html, truchet_text.txt, mstp.zip
-        saved copies of Carlson's published article / package download.
-  - ref_*.png, carlson_cells_sheet.png, mstp_full_raw.png, truchet_carlson_g1.png
-        Carlson's published images (and crops/zooms of them) used as visual
-        references.
+The fidelity checks that those figures were used for are described in
+HANDOFF.md, and the automated gates compare the app against dev/port.py, a
+Python model written from Carlson's published description of the geometry.
 
 The engine in src/engine.js is an independent reimplementation, written in
 JavaScript, of the geometry and algorithm Carlson publishes.  It is not a

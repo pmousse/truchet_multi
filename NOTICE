@@ -5,25 +5,30 @@ Pattern design and mathematics
   https://christophercarlson.com/portfolio/multi-scale-truchet-patterns/
 
   This project is an independent reimplementation of those ideas in JavaScript
-  (and, for testing, in Python).  It is not affiliated with, endorsed by, or
+  (and, for testing, in Python). It is not affiliated with, endorsed by, or
   derived from Carlson's code: no line of his Wolfram Language source was
-  translated into this engine.  The engine reproduces the same geometry —
+  translated into this engine. The engine reproduces the same geometry —
   connection points, circuit tracing, arcs through tangent neighbours, wing
   polygons, depth-parity inversion — because that geometry is what makes the
   patterns behave correctly.
 
-Third-party files kept for reference only (see LICENSE: not covered by this
-repository's license, not ours to redistribute)
-  mstp/MultiScaleTruchetPatterns.wl        Carlson's Wolfram source
-  mstp/MultiScaleTruchetPatternExamples.nb Carlson's example notebook
-  mstp.zip                                 packaged copy of the above
-  truchet_page.html, truchet_page2.html,   saved copies of his article
-  truchet_text.txt
-  ref_*.png, carlson_cells_sheet.png,      his published images, and crops and
-  mstp_full_raw.png, truchet_carlson_g1.png  zooms of them, used as references
+Third-party material is NOT distributed in this repository
+  Carlson's Wolfram source, his example notebook, and the published figures and
+  article scans used while checking this work against his are copyrighted by
+  their author and are not ours to redistribute. They are kept only in the
+  author's own working copy (mstp/, refs/) and are listed in .gitignore, so a
+  clone of this repository does not contain them. The visual comparisons those
+  files were used for are recorded in HANDOFF.md; the automated checks compare
+  against dev/port.py, which is our own model.
 
-Our own work (MIT, © 2026 pmousse): src/, build.js, index.html, dev/,
-dist/truchet.html, README.md, HANDOFF.md.
+Our own work (MIT, © 2026 pmousse)
+  src/, build.js, index.html, dev/, dist/truchet.html, docs/, README.md,
+  HANDOFF.md, LICENSE, NOTICE.
+
+  The code in this repository was written by an AI coding agent — Qwen 3.8
+  flash (model build qwen3.8-flash-next) working in the pi agent harness, at
+  the direction and with the test images of pmousse, who selected the direction,
+  judged the results and owns the project. See README.md.
 
 If you distribute this project, please keep this file, the LICENSE text and the
-in-app credit in index.html ("Patterns & math: Christopher Carlson …").
+in-app credit to Christopher Carlson that the app shows in its own panel.

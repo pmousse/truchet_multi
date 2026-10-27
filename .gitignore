@@ -11,3 +11,19 @@ dev/_fillpage.html
 dev/_fillshare.html
 dev/_fillaspect.html
 dev/_resspike.html
+
+# Third-party material, kept on disk for study and for the visual checks but
+# not published: Carlson's Wolfram source / notebook, and the figures and
+# article scans his work was compared against. Not ours to redistribute.
+refs/
+mstp/
+
+# OS and editor droppings
+.DS_Store
+Thumbs.db
+desktop.ini
+*.tmp
+~$*
+
+# Saved output from the app itself
+truchet_*.png
