@@ -32,20 +32,6 @@ size of your own; from a modest 1K image up to 4K and beyond, at the width and
 height you ask for. What gets saved is the pattern drawn at that size, not an
 enlarged screenshot of the canvas.
 
-The word "square" only belongs to the tile, never to the picture. The tile is a
-square because that is how the motif's arcs meet its edges; the lattice laid
-into your frame is rectangular, and it is laid out *for* that frame. A 21:9
-frame at 4K is a lattice of 63 columns by 27 rows - about 4250 tiles - not a
-square pattern trimmed into a strip, and nothing is cropped or letterboxed.
-
-**Why it holds together across sizes.** Within one picture some cells stay large,
-their neighbours split into four smaller tiles, and some of those split again.
-Where a large tile's motif runs off its edge, the smaller tiles beside it carry
-the same band at their own size, so the line continues across scales instead of
-stopping at a boundary. Tiles at an odd subdivision depth draw the motif
-inverted, which is what keeps the whole frame reading as one surface rather than
-a mosaic of patches.
-
 ## The four tabs
 
 **Generator** — the pattern engine: the controls described above,
