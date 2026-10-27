@@ -191,17 +191,23 @@ node build.js                     # regenerate dist/truchet.html
 
 python dev/_inkqa.py              # ink fractions: engine table vs measured, 24 motifs
 python dev/_tilesqa.py            # tile polygons browser-vs-oracle, pixel by pixel
-python dev/_appqa.py <screenshot> # the 15 picker previews vs the oracle
+python dev/_appqa.py --capture    # the 15 picker previews vs the oracle, self-shot
 python dev/_fillqa.py             # Fill tab through the real app UI
 python dev/_photoqa.py            # Photo tab through the real app UI
 python dev/_ressqa.py             # every frame format x long edge x tab: no black stage
 ```
 
-`_tilesqa.py` and `_appqa.py` need a headless-Chrome capture first:
+`_tilesqa.py` captures its own DOM dump and `_appqa.py --capture` takes its own
+screenshot, so a fresh clone can run every gate with nothing installed beyond
+Python, node and Chrome at the usual path. `dev/browse/` is created as needed.
+To force a fresh dump: `python dev/_tilesqa.py --recapture`. A hand-made capture
+still works - `python dev/_tilesqa.py` reuses an existing dump, and
+`_appqa.py <png> [x0 y0 x1 y1]` still accepts a screenshot of any window size or
+hash, e.g. one taken wider:
 
 ```bash
-chrome --headless=new --dump-dom  file://D:/_truchet/dev/capture.html > dev/browse/capture_dom.txt
-chrome --headless=new --window-size=1730,1010 --screenshot=D:/_truchet/dev/browse/app_qa.png        file:///D:/_truchet/index.html#m=%5C
+chrome --headless=new --window-size=1730,1010 --screenshot=D:/_truchet/dev/browse/app_qa.png file:///D:/_truchet/index.html#m=%5C
+python dev/_appqa.py dev/browse/app_qa.png
 ```
 
 `dev/browse/` is generated scratch and is git-ignored; deleting it between

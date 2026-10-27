@@ -2,8 +2,10 @@
 index.html) reproduces the Python oracle tiles, in grid order.
 
 Usage: python dev/_appqa.py <screenshot.png> [x0 y0 x1 y1]
+       python dev/_appqa.py --capture        (shoots index.html itself, no hand step)
 """
-import sys
+import sys, os, subprocess
+from pathlib import Path
 sys.path.insert(0, 'dev')
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
@@ -11,9 +13,39 @@ import port
 from port import Canvas
 from zoom import read_png
 
-img = sys.argv[1]
+CHROME = r'C:\Program Files\Google\Chrome\Application\chrome.exe'
+
+
+def capture():
+    """Screenshot the app itself. 1400x1150 is the window where the whole Motifs
+    panel is visible, which is what this gate has to see."""
+    if not Path(CHROME).exists():
+        sys.exit('FATAL: Chrome not found at ' + CHROME)
+    os.makedirs('dev/browse', exist_ok=True)
+    out = Path('dev/browse/app_ui.png').resolve()
+    done = subprocess.run([CHROME, '--headless=new', '--disable-gpu', '--no-sandbox',
+                           '--hide-scrollbars', '--force-device-scale-factor=1',
+                           '--window-size=1400,1150', '--virtual-time-budget=9000',
+                           '--screenshot=' + str(out),
+                           Path('index.html').resolve().as_uri()], capture_output=True)
+    if not out.exists():
+        sys.exit('FATAL: chrome produced no screenshot\n' +
+                 (done.stderr.decode('utf-8', 'replace')[-400:]))
+    print('captured %s' % out.name)
+    return str(out)
+
+
+if '--capture' in sys.argv:
+    argv = [sys.argv[0], capture()] + [a for a in sys.argv[1:] if a != '--capture']
+else:
+    if len(sys.argv) < 2:
+        sys.exit('usage: python dev/_appqa.py <screenshot.png> [x0 y0 x1 y1]\n'
+                 '   or: python dev/_appqa.py --capture')
+    argv = sys.argv
+
+img = argv[1]
 W0, H0, px = read_png(img)
-X0, Y0, X1, Y1 = (int(v) for v in (sys.argv[2:6] if len(sys.argv) >= 6 else
+X0, Y0, X1, Y1 = (int(v) for v in (argv[2:6] if len(argv) >= 6 else
                                    (0, 0, W0, H0)))
 
 

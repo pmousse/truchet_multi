@@ -9,12 +9,13 @@
 The sheet holds every name in engine TILE_NAMES, six per row, so its row count -
 and this comparison - follows the tile count rather than a fixed grid.
 
-Regenerate the dump before running:
-  chrome --headless=new --dump-dom file://.../dev/capture.html > dev/browse/capture_dom.txt
+The dump is captured by this script when it is missing, so a fresh clone can run
+it as-is. Force a fresh capture with --recapture.
 
-Usage: python dev/_tilesqa.py [name1 name2 ...]
+Usage: python dev/_tilesqa.py [--recapture] [name1 name2 ...]
 """
-import sys, re, base64, json, subprocess
+import sys, re, base64, json, os, subprocess
+from pathlib import Path
 sys.path.insert(0, 'dev')
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
@@ -24,8 +25,30 @@ from zoom import read_png, write_png
 
 TAB = chr(9)
 
+CHROME = r'C:\Program Files\Google\Chrome\Application\chrome.exe'
+DUMP = 'dev/browse/capture_dom.txt'
 
-def parse_dom(path='dev/browse/capture_dom.txt'):
+
+def capture_dump():
+    """Dump dev/capture.html from the browser, so the gate needs no hand-run step.
+
+    Two traps this avoids: a relative path silently produces an empty dump, and
+    text=True makes Python decode the dump as cp1252 - the page contains bytes
+    that codec cannot map, and the reader thread dies with no output at all.
+    """
+    if not Path(CHROME).exists():
+        sys.exit('FATAL: Chrome not found at ' + CHROME)
+    page = Path('dev/capture.html').resolve().as_uri()
+    done = subprocess.run([CHROME, '--headless=new', '--disable-gpu', '--no-sandbox',
+                           '--hide-scrollbars', '--force-device-scale-factor=1',
+                           '--window-size=1400,900', '--virtual-time-budget=9000',
+                           '--dump-dom', page], capture_output=True)
+    os.makedirs('dev/browse', exist_ok=True)
+    open(DUMP, 'wb').write(done.stdout)
+    print('captured %s (%d bytes from chrome --dump-dom)' % (DUMP, len(done.stdout)))
+
+
+def parse_dom(path=DUMP):
     dom = open(path, encoding='utf-8-sig').read()
     entries = {}
     for line in dom.split('\n'):
@@ -58,7 +81,10 @@ def fit_single(S, pad=0.0):
 
 
 def main():
-    only = sys.argv[1:]
+    args = [a for a in sys.argv[1:] if a != '--recapture']
+    if '--recapture' in sys.argv or not Path(DUMP).exists():
+        capture_dump()
+    only = args
     entries = parse_dom()
     print(f'{len(entries)} canvas entries')
     if 'sheet256' not in entries:
