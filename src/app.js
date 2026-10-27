@@ -33,6 +33,12 @@
    *   def.picker(tiles)    (depth, tile) -> connection index
    *   def.params, def.prefix, def.motifs, def.emptyMessage, def.onShow
    *   def.onRedraw()       called after every redraw, for the tab's own readouts
+   *   def.viewBounds(tiles) optional framing override: a tab that draws a shape
+   *                        inside the frame frames the FRAME, because framing its
+   *                        own tiles would scale the shape up until it filled the
+   *                        frame and stopped being that shape at that size
+   *   def.mode()           optional word for exported file names (otherwise the
+   *                        tiling name, which only describes the Generator)
    */
   const TABS = {
     gen: {
@@ -69,6 +75,9 @@
   function setTab(key) {
     if (!TABS[key]) return;
     S.tab = key;
+    /* The tab is part of the shared state, so the link has to follow it - otherwise
+     * "copy link" hands over the tab you were on *before* this one. */
+    writeHash();
     applyTab();
   }
   function showError(msg) {
@@ -119,6 +128,13 @@
     for (const [k, h] of Object.entries(HASH_KEYS)) {
       p.set(h, Array.isArray(S[k]) ? S[k].join(',') : S[k]);
     }
+    /* A tab may add its own shareable asks. The Generator's live in S; the Fill
+     * tab's live in the tab, and a tab whose input cannot be shared (Photo's
+     * image) shares nothing and simply reopens asking for it. */
+    const share = tabDef().share;
+    if (share) {
+      for (const [k, v] of Object.entries(share() || {})) p.set(k, v);
+    }
     location.hash = p.toString();
   }
   function readHash() {
@@ -133,6 +149,12 @@
         else S[k] = (k in DEFAULTS && typeof DEFAULTS[k] === 'number') ? +v : v;
       }
     }
+  }
+  /* One raw ask from the link, for a tab's own keys. Null when absent, so a tab
+   * can tell "not in the link" from "in the link as zero". */
+  function hashGet(key) {
+    const p = new URLSearchParams(location.hash.slice(1).replace(/\+/g, '%2B'));
+    return p.has(key) ? p.get(key) : null;
   }
 
   /* ================= frame geometry ================= */
@@ -300,7 +322,7 @@
     /* The lattice already carries the frame's ratio, so this scales with no
      * clipping in the normal case; 'cover' only matters when an odd custom
      * size had to be approximated by the nearest lattice (sub-1% sliver). */
-    const [x0, y0, x1, y1] = worldBounds(tiles);
+    const [x0, y0, x1, y1] = (tabDef().viewBounds || worldBounds)(tiles);
     const bw = x1 - x0, bh = y1 - y0;
     const s = Math.max(w / bw, h / bh);
     const winW = w / s, winH = h / s;
@@ -378,7 +400,10 @@
     const isMix = pool.length === T.MOTIF_NAMES.length &&
       pool.every((m, i) => m === T.MOTIF_NAMES[i]);
     const motif = isMix ? 'mix' : pool.map(sanitizeMotif).join('-');
-    return (tabDef().prefix || 'truchet_') + S.tiling + sizePart + '_' + S.seed +
+    /* 'chk/grid/rand/sur/off' only describe the Generator's lattice; a tab that
+     * builds its pictures another way supplies its own word. */
+    const mode = tabDef().mode ? tabDef().mode() : S.tiling;
+    return (tabDef().prefix || 'truchet_') + mode + sizePart + '_' + S.seed +
       '_m' + motif + '_p' + pal + '_' + w + 'x' + h + '.png';
   }
   function exportPNG() {
@@ -609,6 +634,7 @@
   window.TruchetApp = {
     hooks: {},                       // tabs fill these in: hooks.photo = {...}
     registerTab,
+    hashGet,                       // one raw ask from the link, for a tab's own keys
     state: () => S,
     frameRatio, framePx, lattice, latticeMaxT,
     maxLatticeTiles: () => MAX_LATTICE_TILES,

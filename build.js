@@ -1,5 +1,5 @@
 // Build the single-file app: dist/truchet.html
-// inlines src/style.css + src/engine.js + src/app.js + src/photo.js into index.html.
+// inlines src/style.css + engine.js + app.js + photo.js + fill.js into index.html.
 const fs = require('fs');
 const path = require('path');
 const root = __dirname;
@@ -9,8 +9,8 @@ let html = read('index.html');
 html = html.replace('<link rel="stylesheet" href="src/style.css">',
   () => '<style>\n' + read('src/style.css') + '\n</style>');
 html = html.replace(
-  '<script src="src/engine.js"></script>\n<script src="src/app.js"></script>\n<script src="src/photo.js"></script>',
-  () => ['engine.js', 'app.js', 'photo.js']
+  '<script src="src/engine.js"></script>\n<script src="src/app.js"></script>\n<script src="src/photo.js"></script>\n<script src="src/fill.js"></script>',
+  () => ['engine.js', 'app.js', 'photo.js', 'fill.js']
     .map((f) => '<script>\n' + read('src/' + f) + '\n</script>')
     .join('\n'));
 

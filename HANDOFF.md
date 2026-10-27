@@ -13,11 +13,13 @@ Mandala one was built and then removed at the user's request, see below.
   (`mstp/MultiScaleTruchetPatterns.wl`). Validated against Python oracle
   `dev/port.py` via `dev/gold.json` — `node dev/check_gold.js` → 24/24 PASS.
 - UI: `index.html` (dev page, loads `src/engine.js` + `src/app.js` +
-  `src/photo.js` directly) + `src/app.js`, which is a tab shell: a tab registers
-  itself with `registerTab(key, def)` and supplies `motifs`, `ready()`,
-  `tiles(lattice)`, `picker(tiles)`, optional `onShow`/`onRedraw`. Live tabs:
-  **Generator** and **Photo** (Fill / Composer are still placeholders).
-  `node build.js` -> `dist/truchet.html` (single file, ~81 KB).
+  `src/photo.js` + `src/fill.js` directly) + `src/app.js`, which is a tab shell:
+  a tab registers itself with `registerTab(key, def)` and supplies `motifs`,
+  `ready()`, `tiles(lattice)`, `picker(tiles)`, optional
+  `onShow`/`onRedraw`/`viewBounds`/`mode`/`share`. Live tabs: **Generator**,
+  **Photo** and **Fill** (Composer is still a placeholder).
+  `node build.js` -> `dist/truchet.html` (single file, ~113 KB: engine + app +
+  photo + fill inlined).
   Always open `index.html` with a cache-buster (`?v=<commit>`) when verifying.
 - Photo tab (`src/photo.js`): Carlson's quadtree multi-scale subdivision driven
   by image luminance variance, with motif choice by measured ink and cell parity
@@ -122,7 +124,13 @@ holes inside tiles, "broken lens" segments, pattern bleeding off canvas edge.
   now zooms to the wing-bounded box (tile content looks smaller). Consider
   padding/zoom tuning for previews: maybe previews look "wrong" simply due to
   framing, not shapes!!  <-- ALSO CHECK THIS: compare old vs new preview scale.
-- `src/style.css`, `index.html`, `build.js`, `dist/truchet.html` (34.7KB).
+- `src/style.css`, `index.html`, `build.js`, `dist/truchet.html` (~113 KB).
+- `src/photo.js` (Photo tab) and `src/fill.js` (Fill tab) - both register
+  themselves through `app.registerTab`, both build pictures with
+  `TR.fillTiling`, and both keep their own state object (`P` / `F`) that never
+  enters the share hash. Harnesses: `dev/photoharness.js`, `dev/fillharness.js`;
+  gates: `dev/_photoqa.py`, `dev/_fillqa.py`; one-off aspect report:
+  `dev/_fillaspect.py`.
 - `dev/port.py` — Python oracle (fill_poly now nonzero default).
   `dev/gold.json`, `dev/check_gold.js`, `dev/density_ramp.json`,
   `dev/seedrand.py` (JS mulberry32/seedFromString ↔ Python identical),
@@ -292,18 +300,80 @@ typed/old links and hand-built QA queries were affected. `readHash()` in
 `m=+` and encoded `m=%2B` screenshots are byte-identical.
 
 
+## Fill tab (live) - an outline filled with multi-scale Truchet
+`src/fill.js`. Ten preset shapes (circle, squircle, square, diamond, triangle,
+star, hexagon, heart, cross, ring) plus a custom mask chosen, dropped or pasted
+on the canvas. The shape is sampled once onto a 512 x 512 coverage grid (two
+sub-samples per axis, so an edge cell gets a fraction rather than a coin flip -
+that is what lets the staircase hug the outline) and reduced to a summed area
+table, so a cell query is four reads whatever the depth.
+
+The tiling is one `TR.fillTiling` quadtree per lattice cell, with the region
+predicate answering `'out'` for a cell entirely outside the shape, `'in'` for a
+cell entirely inside it, and falling through to subdivision for a cell the
+outline crosses. Two depths, both capped by `depthCap(lattice)`: *outline detail*
+how far a boundary cell keeps halving, *interior detail* how far a wholly-inside
+area keeps halving (0 = one coarse tile). Over the tile budget the build gives
+up outline precision first, then interior detail, and the read-out says which.
+
+- **The pixel floor is the thing that decides whether a wide frame looks like
+  Carlson or like wallpaper glue.** A cell at depth d is 2^-d lattice units, so
+  the floor ("never subdivide below N device pixels in the export") sets the cap
+  as `floor(log2(pxPerUnit / N))`. At 12 px a 16:9 / 1280 px export with base
+  scale 2 gives 40 px cells and a cap of ONE halving: every control still moved
+  its number while the pattern stayed a flat uniform texture with no lace on the
+  outline. The floor is now 4 px, which is the fine end of what an image reads at
+  arm's length, and the Fill default base scale is 1 so the coarsest cells are
+  the biggest the frame allows. Verified by eye: a 16:9 heart now shows coarse
+  interior motifs with a distinctly finer band tracing the outline.
+- **`viewBounds` frames the FRAME, not the tiles it produced.** A tab that draws
+  a shape inside a frame must frame the frame: framing its own tiles would scale
+  the shape up until it filled the canvas and it stopped being that shape at that
+  size. `viewBounds` is the general hook for that.
+- **`mode()` names the export.** `chk/grid/rand/sur/off` describe the Generator's
+  lattice; Fill supplies `fillheart`, `fillmask`, ...
+- **contain / cover keep their promise in a non-square frame**, measured, not
+  assumed: in a 32 x 18 lattice `contain` yields an 18 x 18 box (equal on both
+  axes, whole shape, margins left on the long axis), `cover` yields 32 x 18
+  (scaled to the long side, cut at the short one). Mirrored in 9:16. A square
+  test frame cannot tell these two apart, which is why the harness drives both
+  a wide and a tall frame through the real `#selFormat` select.
+- **The Frame controls moved out of `#genParams`.** `refreshParamVisibility` had
+  the comment "Frame / Color / Output are shared" while the markup kept Frame
+  inside the Generator-only block, so Photo and Fill users could not reach 16:9
+  or 9:16 without leaving the tab - the one thing this app is for.
+- **Share link**: shape, fit, outline detail, interior detail, softness and ink
+  threshold travel (`fsh`, `fft`, `fdp`, `fdi`, `fso`, `fth`); a mask never does,
+  so a link that asked for one reopens asking for it. `setTab` now writes the
+  hash, so "copy link" hands over the tab you were on. `app.hashGet(key)` returns
+  null for an absent key, which is how a tab tells "not in the link" apart from
+  "in the link as zero".
+- Gates: `python dev/_fillqa.py` -> every preset and a locally drawn custom mask
+  paint >= 0.98 of the shape with spill <= 0.18, no tile below 3.5 px in the
+  export, the canvas frames the frame, same parameters build the same tile list,
+  every control proven through the DOM (including a detail value typed above the
+  geometric cap: kept as typed, build uses the cap, the read-out names it), tab
+  round trip keeps the mask, nothing about the mask in the hash, number boxes
+  clamp out-of-range values and ignore cleared boxes, and a second run whose only
+  input is a pasted link reopens the same design (star, depth 3, interior 1,
+  cover, 1228 tiles) by itself.
+
 ## Next actions
 1. Generator rendering: nothing open. If a tile is ever reported broken, ask
    for the URL hash (copy-link encodes every parameter) or a saved screenshot
    and reproduce it headlessly — do not guess.
 2. Mandala: REMOVED at the user's request (see the "built, verified, then
    REMOVED" section). Do not re-add it unless the user asks for it again.
-3. Phase 2: Fill tab (README plan) on the same engine; Photo tab is done.
+3. Phase 2: the Fill tab is done (see the Fill tab section). Composer is the one
+   placeholder left: it needs a rule model that survives the share hash, plus
+   per-region motif pools / palettes. Carlson's operators to build from:
+   `ComposeTilings`, `SnubSquareTiling`, `RandomTriangleSubdivisionTiling`,
+   `CropSquareTiling`.
 4. Possible framing follow-ups: per-format saved presets, JPEG/WebP export, and
    multi-monitor sizes (e.g. 5120 x 1440) via the custom W x H row.
-5. Rendering speed has never been measured; the user doubted it at ×4 density
-   (64 x 36 = 2304 tiles at 4K). A timing benchmark (×1 vs ×4, square vs 16:9)
-   is still worth doing.
+5. Rendering speed is measured (see "Rendering performance"). If a future tab
+   repaints a whole lattice per frame, re-run `dev/bench.html` before assuming
+   the Path2D cache still saves it.
 
 ## License & attribution (added on request)
 - `LICENSE` = MIT for **our** code only (© 2026 pmousse — change the name if you
@@ -315,8 +385,8 @@ typed/old links and hand-built QA queries were affected. `readHash()` in
 - The app credits Carlson visibly (`#credit`, bottom of the panel) and
   `src/engine.js` carries the credit in its file header, so the single-file
   `dist/truchet.html` carries it too. Nothing from Carlson's files is inlined by
-  `build.js` — it inlines `src/style.css`, `src/engine.js`, `src/app.js` and
-  `src/photo.js` only.
+  `build.js` — it inlines `src/style.css`, `src/engine.js`, `src/app.js`,
+  `src/photo.js` and `src/fill.js` only.
 
 ## Rendering performance (measured 2026-10, was never measured before)
 
