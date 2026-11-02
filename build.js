@@ -11,7 +11,7 @@ const read = (p) => fs.readFileSync(path.join(root, p), 'utf8').replace(/\r\n?/g
 let html = read('index.html');
 html = html.replace('<link rel="stylesheet" href="src/style.css">',
   () => '<style>\n' + read('src/style.css') + '\n</style>');
-for (const f of ['engine.js', 'app.js', 'photo.js', 'fill.js']) {
+for (const f of ['engine.js', 'shaders.js', 'app.js', 'photo.js', 'fill.js']) {
   html = html.replace('<script src="src/' + f + '"></script>',
     () => '<script>\n' + read('src/' + f) + '\n</script>');
 }

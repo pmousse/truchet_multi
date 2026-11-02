@@ -20,7 +20,19 @@ body {
 }
 body.panel-hidden #stage { left: 0; }
 /* size is set by app.js so the preview keeps the selected export aspect */
-#mainCanvas { display: block; }
+#mainCanvas { display: block; position: relative; z-index: 1; }
+/* #frame is the flex item both canvases share: mainCanvas gives it its size and
+ * groundCanvas is pinned to the same box, so the animated ground and the tiles
+ * are pixel-for-pixel the same rectangle rather than two boxes that happen to
+ * line up. display:none on the ground keeps it out of the layout entirely when
+ * the ground is a solid colour. */
+#frame { position: relative; }
+#groundCanvas { position: absolute; left: 0; top: 0; display: none; }
+/* Field ink goes on top of the tiles for the same reason the ground goes under
+ * them: it is the same field program, told to paint only where the mask has ink.
+ * Its backing store is the identical rectangle mainCanvas got, so the strokes the
+ * field paints land on the strokes the engine measured. */
+#inkCanvas { position: absolute; left: 0; top: 0; display: none; z-index: 2; }
 
 /* ---------- panel ---------- */
 #panel {
@@ -68,6 +80,7 @@ input[type="number"] { width: 76px; min-width: 0; }
 input[type="text"] { width: 110px; }
 input[type="color"] { width: 42px; height: 28px; padding: 2px; }
 select { max-width: 100%; }
+#selShader { flex: 1; min-width: 0; }
 button.action { cursor: pointer; }
 button.primary {
   background: var(--accent); color: #14151a; border-color: var(--accent);

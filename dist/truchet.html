@@ -27,7 +27,19 @@ body {
 }
 body.panel-hidden #stage { left: 0; }
 /* size is set by app.js so the preview keeps the selected export aspect */
-#mainCanvas { display: block; }
+#mainCanvas { display: block; position: relative; z-index: 1; }
+/* #frame is the flex item both canvases share: mainCanvas gives it its size and
+ * groundCanvas is pinned to the same box, so the animated ground and the tiles
+ * are pixel-for-pixel the same rectangle rather than two boxes that happen to
+ * line up. display:none on the ground keeps it out of the layout entirely when
+ * the ground is a solid colour. */
+#frame { position: relative; }
+#groundCanvas { position: absolute; left: 0; top: 0; display: none; }
+/* Field ink goes on top of the tiles for the same reason the ground goes under
+ * them: it is the same field program, told to paint only where the mask has ink.
+ * Its backing store is the identical rectangle mainCanvas got, so the strokes the
+ * field paints land on the strokes the engine measured. */
+#inkCanvas { position: absolute; left: 0; top: 0; display: none; z-index: 2; }
 
 /* ---------- panel ---------- */
 #panel {
@@ -75,6 +87,7 @@ input[type="number"] { width: 76px; min-width: 0; }
 input[type="text"] { width: 110px; }
 input[type="color"] { width: 42px; height: 28px; padding: 2px; }
 select { max-width: 100%; }
+#selShader { flex: 1; min-width: 0; }
 button.action { cursor: pointer; }
 button.primary {
   background: var(--accent); color: #14151a; border-color: var(--accent);
@@ -148,7 +161,13 @@ label.check { display: flex; align-items: center; color: var(--panel-fg); }
 </style>
 </head>
 <body>
-<div id="stage"><canvas id="mainCanvas"></canvas></div>
+<div id="stage">
+  <div id="frame">
+    <canvas id="groundCanvas"></canvas>
+    <canvas id="mainCanvas"></canvas>
+    <canvas id="inkCanvas"></canvas>
+  </div>
+</div>
 <button id="showBtn">☰ Truchet Studio</button>
 <button id="hideBtn">☰ hide</button>
 <div id="err"></div>
@@ -299,6 +318,41 @@ label.check { display: flex; align-items: center; color: var(--panel-fg); }
       <label>max depth</label><input type="color" id="inC2">
       <label>ground</label><input type="color" id="inBg">
     </div>
+    <div class="row"><select id="selGround">
+      <option value="solid">solid ground colour</option>
+      <option value="shader">animated shader ground&hellip;</option>
+    </select></div>
+    <div class="row" id="rowShader"><select id="selShader"></select></div>
+    <div class="row wrap" id="rowShade">
+      <label>speed</label>
+      <input type="number" id="inShSpeed" min="0" max="4" step="0.1" inputmode="decimal">
+      <label>scale</label>
+      <input type="number" id="inShScale" min="0.25" max="4" step="0.25" inputmode="decimal">
+      <label>palette %</label>
+      <input type="number" id="inShMix" min="0" max="100" step="5" inputmode="numeric">
+      <label>scrim %</label>
+      <input type="number" id="inScrim" min="0" max="90" step="5" inputmode="numeric">
+    </div>
+    <div class="row"><span id="groundInfo" class="info"></span></div>
+    <div class="row"><span class="hint">the shader paints the frame as one field &mdash; it is never tiled, never sampled per cell &mdash; and the tiles&rsquo; light colour class turns transparent so that field reads through the ink. speed / scale / palette % shape the field, scrim dims it under the pattern for legibility. an export takes the frame you are looking at.</span></div>
+
+    <div class="row"><select id="selInk">
+      <option value="solid">solid ink colour</option>
+      <option value="shader">animated shader ink&hellip;</option>
+    </select></div>
+    <div class="row" id="rowInkShader"><select id="selInkShader"></select></div>
+    <div class="row wrap" id="rowInkShade">
+      <label>speed</label>
+      <input type="number" id="inInkSpeed" min="0" max="4" step="0.1" inputmode="decimal">
+      <label>scale</label>
+      <input type="number" id="inInkScale" min="0.25" max="4" step="0.25" inputmode="decimal">
+      <label>pigment %</label>
+      <input type="number" id="inInkPig" min="0" max="100" step="5" inputmode="numeric">
+      <label>relief %</label>
+      <input type="number" id="inInkRelief" min="0" max="100" step="5" inputmode="numeric">
+    </div>
+    <div class="row"><span id="inkInfo" class="info"></span></div>
+    <div class="row"><span class="hint">ink painted by a field uses the same ten fields: the tiles are still drawn exactly as the lattice rules decide &mdash; same arcs, same wings, same break rules, same colour class per depth &mdash; and only the colour of that drawing is replaced by the field&rsquo;s hue. each stroke keeps the lightness its palette gave it, which is what the pattern is read from; relief % is how far the field may deepen a stroke away from the ground where the field is at its brightest &mdash; away, never toward, so a field can deepen the ink but cannot bury it &mdash; and pigment % is how much of the ink&rsquo;s own colour the hue may replace. ink speed and scale run on their own clock, independent of the ground.</span></div>
 
     <div class="sect" id="outSect">Output</div>
     <div class="row" id="rowRes"><label id="lblRes">long edge</label>
@@ -881,11 +935,712 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
 
 </script>
 <script>
+/* ============================= shaders.js =============================
+ * Animated WebGL fields: the ground the Truchet tiles sit on, and the paint the
+ * tiles themselves can be drawn with.
+ *
+ * WHY A SEPARATE CANVAS. The tiles are drawn on #mainCanvas, which is 2D. A
+ * field that lived on that canvas would have to be repainted into the
+ * background of every tile and would then be sampled by the Fill tab's ink
+ * flood - a per-tile ground, which is not a ground at all. So the field is its
+ * own full-frame WebGL canvas stacked under the tiles, sized by the same
+ * framePx() the 2D pass uses, and the picture's "under" colour turns into real
+ * transparency (rgba(0,0,0,0), which canvas composites rather than paints) so
+ * the field reads through the ink instead of replacing it.
+ *
+ * WHY EVERY BODY LOOPS. Each body writes its time as u_time / u_loop * TAU and
+ * then uses whole harmonics of that phase - never a raw multiple of time. Two
+ * reasons. A raw t is not periodic: a wrapped clock would pop when the counter
+ * restarts, and a field whose noise drifts without bound slides instead of
+ * breathing. And phase terms keep the float precision good however long the
+ * page stays open. The rule has teeth: a hue drift is only seamless if it moves
+ * by whole palette cycles per loop (cosPal has period 1), which is why the
+ * slowest drift here is exactly one rotation, and why 'cells' does not drift
+ * its hues at all - it moves instead. The payoff is that every ground here is
+ * a seamless loop, so a recording of it tiles in time as well as on the canvas.
+ *
+ * WHY THE PALETTE MIX EXISTS. A field with colours of its own fights the ink:
+ * Carlson's pictures get their unity from a small colour set. u_mix folds the
+ * field onto the picture's own ramp (u_a is the picture's ink end, u_b its
+ * ground), so the ground can be *of* the picture rather than merely behind it.
+ * At 0% the field keeps its own palette; at 100% it is painted only with the
+ * picture's colours. That is what makes 'wash' possible, and what stops a busy
+ * field from turning a five-colour pattern into a rainbow. The fold maps the
+ * field's own lightness onto the ramp, so the spread the pattern reads against
+ * survives folding: a field that spans a tenth of the lightness it has spans a
+ * tenth of the ramp it is folded onto. An earlier version chose the ramp
+ * position from the field's red channel instead, and a whole frame of the
+ * picture's two colours came out five times flatter than the field that went in
+ * - the flattening this dial exists to avoid, caused by the dial itself. And the
+ * ramp is walked in its own lightness order - dark end to light end, whichever
+ * uniform each end happens to be - rather than from u_a to u_b, because on a
+ * palette whose ink end is the dark one, walking u_a to u_b returned the field
+ * with its light currents turned dark. A fold may recolour a ground; it may not
+ * invert it.
+ *
+ * WHY THE SCRIM EXISTS. A field can still outshine the pattern laid on it. The
+ * naive fix - dim toward black - only helps one polarity of ink: it quiets the
+ * field under a light ink and buries a dark ink in the same field. u_scrim pulls
+ * the field toward u_b instead, the frame's own background colour, which is the
+ * end of the palette the ink is defined against, so it always moves the field
+ * away from the ink and never into a dead grey. At 0% the field is at full
+ * voice; at 100% it is the picture's own ground, still moving, only quieter.
+ *
+ * WHY THE SAME BODIES CAN ALSO PAINT THE INK. The ink role hands a body a mask
+ * instead of a frame: the engine draws the tiles exactly as it always did, into a
+ * 2D canvas, and that canvas arrives as u_mask with the ink's colour in rgb and its
+ * coverage in alpha. The body then contributes hue only - chroma() throws away the
+ * field's brightness and atLightness() gives the colour back the lightness the ink
+ * already had. That split is the whole design. A field's *colour* is decoration and
+ * can be swapped freely; its *lightness* is what a 3-pixel line is visible by, and a
+ * field that paints lightness into a line of its own choosing can brighten a stroke
+ * into the ground it was drawn to stand against, which is not an uglier line but no
+ * line. So on the ink the shape is never drawn by the field - it is poured into -
+ * and u_mix says how much of the field's colour is allowed while the ink keeps its
+ * own lightness. u_relief is the one dial that lets the field touch lightness, and it
+ * is measured along the gap between the ink and the ground rather than in the
+ * abstract: relief 30 means this pixel of ink may move three tenths of the way it
+ * already has toward the ground, no further, in either direction. A dial in absolute
+ * luminance units cannot make that promise for a light ink and a dark ink at the
+ * same time.
+ *
+ * WHY BODIES ARE FUNCTIONS AND NOT MAINS. Every body is `vec3 field(vec2 p, float t)`
+ * and the module supplies main(). The body computes a colour; who gets to decide the
+ * alpha is the module, because the ground is opaque and the ink is coverage - the same
+ * field, two jobs, one body, no body free to write an alpha that breaks the role it is
+ * being used in.
+ * ===================================================================== */
+(function () {
+  'use strict';
+
+  /* Shared preamble every body gets: the uniforms, and the helpers a field
+   * wants (IQ cosine palettes, value noise, fBm, hashes). Bodies are GLSL ES
+   * 1.00 - constant loop bounds only, no dynamic arrays. */
+  const COMMON = `
+precision highp float;
+uniform float u_time;   /* seconds, always inside [0, u_loop) */
+uniform float u_loop;   /* this body's own cycle length */
+uniform vec2  u_res;
+uniform float u_scale;  /* field size across the short side of the frame */
+uniform float u_seed;
+uniform float u_mix;      /* 0..1, how much the field borrows the palette */
+uniform float u_scrim;    /* ground only: how much ground colour is laid over it */
+uniform float u_relief;   /* ink only: see the ink main */
+uniform vec3  u_a;      /* the picture's light ink */
+uniform vec3  u_b;      /* the picture's ground */
+uniform sampler2D u_mask;  /* ink only: the ink itself, rgb its colour, a its coverage */
+
+#define TAU 6.28318530718
+
+/* Loop phase. Bodies write motion as whole harmonics of this and nothing else,
+ * which is what makes the field line up with itself when the clock wraps. */
+float ph() { return u_time / u_loop * TAU; }
+
+/* Frame coordinates centred on the frame, aspect-corrected so a blob is round
+ * rather than an ellipse, then scaled by the user's field scale. The short side
+ * of the frame spans 1.0 world units. */
+vec2 frameUV() {
+  float m = min(u_res.x, u_res.y);
+  return (gl_FragCoord.xy - 0.5 * u_res) / m * u_scale;
+}
+
+vec3 cosPal(float t) {
+  return 0.5 + 0.5 * cos(TAU * (vec3(1.0) * t + vec3(0.0, 0.33, 0.67)));
+}
+
+/* Saturate without clipping to blocks: muddy mid-tones where two colours meet
+ * are the usual failure of a weighted colour blend. */
+vec3 boost(vec3 c, float k) { return clamp((c - 0.5) * k + 0.5, 0.0, 1.0); }
+
+float hash1(float n) { return fract(sin(n * 12.9898) * 43758.5453); }
+float hash21(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+
+float vnoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  /* A smoothstep edge rather than fwidth: constant at every resolution, so the
+   * preview and a 6000 px export agree field for field. */
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash21(i), hash21(i + vec2(1.0, 0.0)), u.x),
+             mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+float fbm(vec2 p) {
+  float v = 0.0, a = 0.5;
+  for (int i = 0; i < 5; i++) {
+    v += a * vnoise(p);
+    p = p * 2.02 + vec2(1.7, 9.2);
+    a *= 0.5;
+  }
+  return v;
+}
+
+float lum(vec3 c) { return dot(clamp(c, 0.0, 1.0), vec3(0.2126, 0.7152, 0.0722)); }
+
+/* A colour's hue and saturation with its brightness thrown away: dividing by the
+ * brightest channel leaves the ratios, and the ratios are what hue is. */
+vec3 chroma(vec3 c) {
+  c = clamp(c, 0.0, 1.0);
+  return c / max(max(c.r, max(c.g, c.b)), 1e-4);
+}
+
+/* Give a colour a requested lightness by scaling its channels, which leaves the
+ * ratios - the hue - alone. This is how a field contributes colour to ink without
+ * contributing its brightness: the ink keeps the lightness the pattern was designed
+ * with, which is the half of the colour the shape is actually read from. A field
+ * colour with no ratios to scale (pure black) has no hue to offer either, so it
+ * falls back to a flat lightness rather than dividing by zero. */
+vec3 atLightness(vec3 c, float L) {
+  float l = lum(c);
+  if (l < 1e-4) return vec3(clamp(L, 0.0, 1.0));
+  vec3 s = clamp(c * (clamp(L, 0.0, 1.0) / l), 0.0, 1.0);
+  /* Scaling cannot always reach the lightness it was asked for. A saturated colour
+   * hits the ceiling on one channel long before its average brightness gets there -
+   * a pure red can be scaled to a luminance of about 0.21 and no further - so the
+   * remainder is added flat. That costs a little saturation at the extremes, which
+   * is the honest trade: the promise the ink's lightness dial makes is about
+   * lightness, and without this the promise is quietly broken by as much as a
+   * fifth of the frame's range. */
+  return clamp(s + (clamp(L, 0.0, 1.0) - lum(s)), 0.0, 1.0);
+}
+
+/* The tail every body runs through.
+ *   u_scrim the frame's own ground colour, blended back over the whole field.
+ *   u_mix   the field's colours folded onto the picture's ramp. The fold maps
+ *           the field's own lightness onto the ramp, which is what keeps the
+ *           spread the pattern reads against: a field whose lightness spans a
+ *           tenth of the frame keeps a tenth of the ramp. An earlier version
+ *           picked the ramp position from a hash of the field's red channel, so
+ *           the same field came out of the fold five times flatter than it went
+ *           in - the flattening this dial was supposed to avoid, not cause.
+ *           Mapping by lightness also makes the fold independent of how a body
+ *           happens to name its channels, which a per-body colour map is not. */
+vec3 finish(vec3 c) {
+  c = mix(clamp(c, 0.0, 1.0), clamp(u_b, 0.0, 1.0), clamp(u_scrim, 0.0, 1.0));
+  if (u_mix > 0.0) {
+    float L = clamp(dot(clamp(c, 0.0, 1.0), vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
+    /* The ramp is walked in its own lightness order, whichever end of the
+     * picture's palette happens to be the light one, so the fold can never turn
+     * a field inside out. Mapping straight from u_a to u_b did exactly that on a
+     * palette whose ink end is the dark end: the field's light currents came back
+     * as its dark ones, which is a broken ground however well coloured it is. */
+    float la = dot(clamp(u_a, 0.0, 1.0), vec3(0.2126, 0.7152, 0.0722));
+    float lb = dot(clamp(u_b, 0.0, 1.0), vec3(0.2126, 0.7152, 0.0722));
+    vec3 darkEnd = la < lb ? u_a : u_b;
+    vec3 litEnd = la < lb ? u_b : u_a;
+    return mix(c, mix(darkEnd, litEnd, L), u_mix);
+  }
+  return c;
+}
+`;
+
+  /* A field is one function over the whole frame, never a function of a tile:
+   * that is the request, and the reason this is a shader on a canvas of its own
+   * rather than a pattern drawn inside each cell. */
+  const SHADERS = [
+    {
+      key: 'mesh',
+      label: 'mesh gradient — soft airbrushed colour field (like shader.jpg)',
+      loop: 90,
+      src: `
+/* Six colour sources on circular paths, each contributing a Gaussian weight,
+ * blended by weight rather than by boundary - which is what makes it read as
+ * one field with no seams. The weights are deliberately wide and each source is
+ * spread far around the palette cycle: narrow weights or nearby hues blend to
+ * grey, which was this shader's first failure. */
+vec3 field(vec2 p, float t) {
+  vec3 sum = vec3(0.0);
+  float tot = 0.0;
+  for (int i = 0; i < 6; i++) {
+    float fi = float(i);
+    /* A source rides a circle in frame space, so it is exactly back where it
+     * started when the loop closes. */
+    vec2 c = vec2(
+      1.2 * cos(t + fi * 1.7 + hash1(fi + u_seed * 7.0) * TAU),
+      0.95 * sin(t + fi * 2.3 + hash1(fi * 3.0 + u_seed * 11.0) * TAU));
+    float d = length(p - c);
+    float w = exp(-d * d * (0.9 + 0.6 * hash1(fi * 5.0)));
+    sum += w * boost(cosPal(fi * 0.19 + t / TAU
+             + hash1(fi + u_seed * 13.0) * 0.3), 1.5);
+    tot += w;
+  }
+  /* t/TAU runs 0..1 over the loop: one full palette rotation, the slowest
+   * drift that is still seamless. */
+  vec3 col = boost(sum / max(tot, 1e-4), 1.5);
+  col = clamp((col - 0.5) * 1.2 + 0.5, 0.0, 1.0);
+  col += 0.05 * (fbm(p * 3.0 + 0.6 * vec2(cos(t), sin(t))) - 0.5);  /* airbrush grain */
+  col = pow(clamp(col, 0.0, 1.0), vec3(0.9));
+  return col;
+}`
+    },
+    {
+      key: 'plasma',
+      label: 'plasma — warped sine field, cycling colours',
+      loop: 30,
+      src: `
+vec3 field(vec2 p, float t) {
+  float v = sin(p.x * 2.0 + t * 3.0)
+          + sin(p.y * 3.0 - t * 2.0)
+          + sin((p.x + p.y) * 2.4 + t * 2.0)
+          + sin(length(p) * 3.5 - t * 3.0);
+  vec3 col = boost(cosPal(v * 0.13 + t / TAU + u_seed), 1.15);
+  col *= 0.88 + 0.24 * sin(v * 0.9 + t * 2.0);
+  return col;
+}`
+    },
+    {
+      key: 'aurora',
+      label: 'aurora — dark field with flowing luminous curtains',
+      loop: 60,
+      src: `
+vec3 field(vec2 p, float t) {
+  /* The noise space rides a circle rather than sliding, so the curtains fold
+   * back on themselves instead of scrolling off the frame. */
+  vec2 flow = 0.6 * vec2(cos(t), sin(t));
+  float fold = fbm(p * 0.8 + vec2(flow.x, flow.y * 0.5));
+  float band = 0.0;
+  for (int i = 0; i < 3; i++) {
+    float fi = float(i);
+    float curtain = fbm(p * vec2(0.9, 1.6)
+                      + vec2(fi * 1.9 + flow.x, fi * 0.4 - flow.y));
+    /* cubed, not squared: the curtains have to stay thin against the dark or
+     * the whole frame fills with glow and the field stops reading as night. */
+    curtain = pow(clamp(curtain, 0.0, 1.0), 3.0);
+    band += curtain * (0.45 + 0.4 * sin(t * 2.0 + u_seed * 6.0 + fi * 1.7));
+  }
+  vec3 sky = boost(cosPal(0.55 + u_seed + fold * 0.12), 1.1) * 0.12;
+  vec3 glow = boost(cosPal(0.05 * fold + t / TAU + 0.35 + u_seed), 1.4);
+  vec3 col = sky + glow * band * 1.25;
+  return col;
+}`
+    },
+    {
+      key: 'marble',
+      label: 'marble — slow turbulent veins, folded colours',
+      loop: 90,
+      src: `
+vec3 field(vec2 p, float t) {
+  /* Two fbm layers, the outer one only bending the space the inner one reads:
+   * enough to make the veins wander without shredding them into noise. */
+  vec2 drift = 0.7 * vec2(cos(t), sin(t));
+  float warp = fbm(p * 0.7 + drift);
+  float n = fbm(p * 1.1 + warp * 1.2 + drift.y);
+  float v = sin(dot(p, vec2(1.3, 0.9)) * 2.4 + n * 5.5 + t);
+  float vein = smoothstep(-0.35, 0.85, v);
+  vec3 a = boost(cosPal(u_seed + 0.15), 1.2);
+  vec3 b = boost(cosPal(u_seed + 0.62 + n * 0.2), 1.2);
+  vec3 col = mix(a, b, vein) * (0.70 + 0.5 * vein);
+  return col;
+}`
+    },
+    {
+      key: 'lava',
+      label: 'lava — big soft blobs, glowing edges',
+      loop: 45,
+      src: `
+vec3 field(vec2 p, float t) {
+  float tot = 0.0;
+  vec3 acc = vec3(0.0);
+  for (int i = 0; i < 5; i++) {
+    float fi = float(i);
+    vec2 c = 0.85 * vec2(
+      sin(t * 2.0 + fi * 2.1 + hash1(fi + u_seed * 9.0) * TAU),
+      cos(t + fi * 1.4 + hash1(fi * 2.0 + u_seed * 5.0) * TAU));
+    float r = 0.55 + 0.3 * hash1(fi * 4.0 + u_seed);
+    /* A metaball weight r^2/d^2 reaches across the whole frame, so two blobs
+     * are enough to tint everything and the field turns to mud - that was this
+     * shader's first failure. This weight has a support instead: a blob colours
+     * its own neighbourhood and lets the deep base read between them, which is
+     * the lamp-lava look wanted here. */
+    float w = clamp(1.0 - length(p - c) / r, 0.0, 1.0);
+    w *= w;
+    tot += w;
+    acc += w * boost(cosPal(fi * 0.21 + u_seed + t / TAU), 1.5);
+  }
+  vec3 col = acc / max(tot, 1e-4);
+  vec3 base = boost(cosPal(0.55 + u_seed), 1.1) * 0.32;
+  col = mix(base, boost(col, 1.35), smoothstep(0.02, 0.30, tot));
+  return col;
+}`
+    },
+    {
+      key: 'cells',
+      label: 'cells — drifting soft voronoi, colour per cell',
+      loop: 24,
+      src: `
+vec3 field(vec2 p, float t) {
+  vec2 ip = floor(p);
+  /* Nearest AND next-nearest, not just nearest: a hard hue change exactly where
+   * two cells trade places is what makes a voronoi read as a cracked surface -
+   * this shader's first failure. Blending across the distance gap softens that
+   * seam into a fold. */
+  float d1 = 1e9, d2 = 1e9, id1 = 0.0, id2 = 0.0;
+  for (int j = -1; j <= 1; j++) {
+    for (int i = -1; i <= 1; i++) {
+      vec2 cell = ip + vec2(float(i), float(j));
+      vec2 r = vec2(hash21(cell), hash21(cell + 7.31));
+      /* Cells jitter inside their own unit square so the lattice never shows as
+       * a grid, and each rides its own circle so the swap points keep moving and
+       * everything is back where it started at the end of the loop. */
+      vec2 pos = cell + 0.5 + 0.38 * sin(t * 2.0 + r * TAU);
+      float d = length(pos - p);
+      if (d < d1) { d2 = d1; id2 = id1; d1 = d; id1 = r.x; }
+      else if (d < d2) { d2 = d; id2 = r.x; }
+    }
+  }
+  /* id is a hash of the cell, so multiplying it past half a palette cycle
+   * spreads neighbouring cells across distinct hues instead of landing them all
+   * in the same green - the other thing this shader got wrong at first. No hue
+   * drift: an integer number of palette rotations per 24 s would be a disco. */
+  vec3 c1 = boost(cosPal(id1 * 0.62 + u_seed), 1.35);
+  vec3 c2 = boost(cosPal(id2 * 0.62 + u_seed), 1.35);
+  float seam = smoothstep(0.0, 0.55, d2 - d1);   /* 1 away from a cell boundary */
+  vec3 col = mix(c2, c1, seam) * (0.72 + 0.4 * seam)
+           * (0.85 + 0.3 * hash1(id1 * 17.0));   /* cells of their own lightness */
+  return col;
+}`
+    },
+    {
+      key: 'ripple',
+      label: 'ripple — interference rings from moving sources',
+      loop: 30,
+      src: `
+vec3 field(vec2 p, float t) {
+  float s = 0.0;
+  for (int i = 0; i < 4; i++) {
+    float fi = float(i);
+    vec2 c = 0.9 * vec2(
+      cos(t + fi * 1.9 + hash1(fi * 3.0 + u_seed * 3.0) * TAU),
+      sin(t * 2.0 + fi * 1.1 + hash1(fi * 5.0 + u_seed * 7.0) * TAU));
+    s += cos(length(p - c) * 9.0 - t * 6.0);
+  }
+  s /= 4.0;
+  vec3 col = cosPal(s * 0.45 + u_seed + t / TAU);
+  /* Narrow lightness swing: an interference field is already loud, and a wide
+   * brightness term on top of it turns it into a thermal map. */
+  col = boost(col, 1.15) * (0.86 + 0.22 * s);
+  return col;
+}`
+    },
+    {
+      key: 'silk',
+      label: 'silk — fine flowing bands',
+      loop: 30,
+      src: `
+vec3 field(vec2 p, float t) {
+  vec2 drift = 0.5 * vec2(cos(t), sin(t));
+  float w = fbm(p * 1.1 + drift);
+  float bands = sin(p.y * 3.0 + p.x * 0.8 + w * 3.2 + t * 2.0);
+  float fine = sin(bands * 3.0 + w * 2.0 - t * 2.0);
+  vec3 col = boost(cosPal(bands * 0.14 + w * 0.2 + t / TAU + u_seed), 1.3);
+  col *= 0.80 + 0.25 * fine;
+  return col;
+}`
+    },
+    {
+      key: 'veil',
+      label: 'veil — soft travelling gradient, very low contrast',
+      loop: 90,
+      src: `
+vec3 field(vec2 p, float t) {
+  /* Two octaves on circular paths of different radius and harmonic: the second
+   * one does not march in lockstep with the first, which is what makes a soft
+   * field read as weather rather than as one swinging gradient. */
+  float n1 = fbm(p * 0.8 + 0.9 * vec2(cos(t), sin(t)));
+  float n2 = fbm(p * 1.9 + 0.5 * vec2(cos(t * 2.0 + 1.3), sin(t * 2.0)));
+  float v = n1 * 0.65 + n2 * 0.35 + 0.18 * sin(p.x * 0.35 + p.y * 0.4 + t);
+  vec3 col = cosPal(v * 0.55 + t / TAU + u_seed);
+  col = mix(vec3(0.5), col, 0.78);   /* deliberately low contrast */
+  return col;
+}`
+    },
+    {
+      key: 'wash',
+      label: 'wash — the picture’s own two colours, alive',
+      loop: 60,
+      src: `
+vec3 field(vec2 p, float t) {
+  /* Meant to be read with palette % at 100: this one paints no colours of its
+   * own, only a lightness field, and finish() maps that onto the picture's
+   * ramp. The two octaves ride circles of different radius and phase for the
+   * same reason veil's do. */
+  float n1 = fbm(p * 0.9 + 0.8 * vec2(cos(t), sin(t)));
+  float n2 = fbm(p * 2.1 + 0.6 * vec2(cos(t * 2.0 + 2.1), sin(t * 2.0 + 0.7)));
+  float v = smoothstep(0.28, 0.78, n1 * 0.7 + n2 * 0.3);
+  return vec3(v);
+}`
+    }
+  ];
+
+  function hexToRGB(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+    if (!m) return [0.95, 0.94, 0.90];
+    const n = parseInt(m[1], 16);
+    return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+  }
+
+  /* One triangle covering the frame - no attributes to feed, no buffers to keep
+   * in step with the 2D pass, nothing to re-upload when the frame changes. */
+  const VERT = `attribute vec2 a_pos;
+void main() { gl_Position = vec4(a_pos, 0.0, 1.0); }`;
+  const TRI = new Float32Array([-1, -1, 3, -1, -1, 3]);
+
+  /* Two ways to put the same field to work.
+   *
+   * On the ground the field is the surface: it paints every pixel of the frame
+   * and finishes opaque, and the tiles sit over it.
+   *
+   * On the ink the field is paint poured into a shape that was drawn somewhere
+   * else. u_mask carries the ink the engine already drew - its colour in rgb, its
+   * coverage in a - and nothing in this program draws a line, an arc or a wing,
+   * so nothing in it can move one. The field supplies hue; the ink keeps the
+   * lightness the pattern was designed with, because lightness is the half the
+   * shape is read from.
+   *
+   * u_a is unused in the ink program on purpose: the ink's colour arrives through
+   * the mask, per pixel, including the way it drifts across subdivision depths,
+   * which no uniform could carry. */
+  const GROUND_MAIN = `
+void main() {
+  gl_FragColor = vec4(finish(field(frameUV(), ph())), 1.0);
+}`;
+
+  const INK_MAIN = `
+void main() {
+  /* A 2D canvas uploads with its first row at v = 0 and gl_FragCoord counts rows
+   * from the bottom of the frame, so the mask has to be sampled with y turned
+   * around. Without this the field lands on its own picture upside down - the ink
+   * is there, the coverage is right, and every stroke is in the wrong place. */
+  vec4 ink = texture2D(u_mask, vec2(gl_FragCoord.x / u_res.x, 1.0 - gl_FragCoord.y / u_res.y));
+  if (ink.a <= 0.0) { gl_FragColor = vec4(0.0); return; }
+  vec3 f = field(frameUV(), ph());
+  /* u_relief is measured along the way from this pixel of ink to the ground it has
+   * to be read against, so the most relief can spend is a share of a distance that
+   * already keeps the ink legible - and it may only spend it going the right way.
+   * A field deepens the ink where the field is bright, always further from the
+   * ground, never toward it: an earlier version swung lightness toward the ground
+   * on bright parts of the field, which is exactly the camouflage the whole ground
+   * argument was about avoiding, and it showed - 10% of the ink vanished into an
+   * aurora ground. At relief 0 the ink's lightness is exactly the designed one and
+   * the field can only change hue. */
+  float L = lum(ink.rgb);
+  float side = lum(u_b) > L ? -1.0 : 1.0;          // the ink's own side of the ground
+  float span = abs(L - lum(u_b));                  // the distance relief may draw on
+  float L2 = clamp(L + side * u_relief * span * lum(f), 0.0, 1.0);
+  vec3 col = mix(ink.rgb, atLightness(chroma(f), L2), clamp(u_mix, 0.0, 1.0));
+  /* The canvas is composited premultiplied, and coverage is partial along every
+   * antialiased edge: not premultiplying here is how a field-ink outline grows a
+   * halo the solid ink never had. */
+  gl_FragColor = vec4(col * ink.a, ink.a);
+}`;
+
+
+  const byKey = new Map(SHADERS.map(d => [d.key, d]));
+
+  /* A stored preference can name a field that no longer exists - a share link
+   * from a build that had a body this one dropped. Fall back to the first field
+   * rather than drawing nothing. */
+  function keyFor(want) { return byKey.has(want) ? want : SHADERS[0].key; }
+
+  const DEFAULTS = { shSpeed: 1, shScale: 1, shMix: 45, scrim: 45,
+    inkSpeed: 1, inkScale: 1, inkPig: 45, inkRelief: 25 };
+
+  /**
+   * A field is a live GL binding on one canvas, in one role: 'ground' paints the
+   * surface behind the tiles, 'ink' paints the tiles themselves through a mask.
+   * The app keeps two of each - the preview pair and an export-sized pair for the
+   * PNG - each with its own GL context, and all of them have to show the same
+   * field at the same phase. So parameters are pushed once and every render
+   * applies them.
+   */
+  function createGround(canvasEl, role) {
+    const inkRole = role === 'ink';
+    const gl = canvasEl.getContext('webgl', {
+      /* The ground is opaque and covers the frame; the ink is a partial-coverage
+       * layer over it, so the two need opposite alpha setups. Both are declared
+       * premultiplied, because the ink program writes col * coverage on purpose -
+       * declaring the buffer as straight alpha instead makes the browser divide the
+       * colour by its own coverage when compositing, which brightens every
+       * antialiased edge into a halo the solid ink never had. */
+      alpha: inkRole,
+      antialias: false,             // a full frame: there is no edge to smooth
+      depth: false, stencil: false,
+      preserveDrawingBuffer: true,  // the export has to read the buffer back
+      premultipliedAlpha: true,
+      powerPreference: 'low-power'
+    });
+    if (!gl) return { ok: false, reason: 'WebGL is not available in this browser.' };
+
+    const cache = new Map();        // one program per field per role, compiled on first use
+    let entry = null, key = null;
+    let mask = null, maskTex = null;
+    const params = {
+      scale: 1, seed: 0.31, mix: 0.45, scrim: 0.45, relief: 0,
+      a: [0.10, 0.10, 0.12], b: [0.95, 0.94, 0.90]
+    };
+
+    function programFor(def) {
+      const ck = def.key + (inkRole ? '#ink' : '#ground');
+      if (cache.has(ck)) return { entry: cache.get(ck) };
+      const vs = gl.createShader(gl.VERTEX_SHADER);
+      gl.shaderSource(vs, VERT); gl.compileShader(vs);
+      const fs = gl.createShader(gl.FRAGMENT_SHADER);
+      gl.shaderSource(fs, COMMON + def.src + (inkRole ? INK_MAIN : GROUND_MAIN));
+      gl.compileShader(fs);
+      if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+        gl.deleteShader(vs); gl.deleteShader(fs);
+        return { error: gl.getShaderInfoLog(fs) };
+      }
+      const prog = gl.createProgram();
+      gl.attachShader(prog, vs); gl.attachShader(prog, fs);
+      gl.linkProgram(prog);
+      gl.deleteShader(vs); gl.deleteShader(fs);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+        return { error: gl.getProgramInfoLog(prog) };
+      }
+      const buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, TRI, gl.STATIC_DRAW);
+      const e = {
+        def, prog, buf,
+        pos: gl.getAttribLocation(prog, 'a_pos'),
+        u: {
+          time: gl.getUniformLocation(prog, 'u_time'),
+          loop: gl.getUniformLocation(prog, 'u_loop'),
+          res: gl.getUniformLocation(prog, 'u_res'),
+          scale: gl.getUniformLocation(prog, 'u_scale'),
+          seed: gl.getUniformLocation(prog, 'u_seed'),
+          mix: gl.getUniformLocation(prog, 'u_mix'),
+          scrim: inkRole ? null : gl.getUniformLocation(prog, 'u_scrim'),
+          relief: inkRole ? gl.getUniformLocation(prog, 'u_relief') : null,
+          mask: inkRole ? gl.getUniformLocation(prog, 'u_mask') : null,
+          a: gl.getUniformLocation(prog, 'u_a'),
+          b: gl.getUniformLocation(prog, 'u_b')
+        }
+      };
+      cache.set(ck, e);
+      return { entry: e };
+    }
+
+    /* Returns true, or { error } for the panel to report: a body that fails on
+     * somebody's GPU has to say so, not leave a black frame with no reason. */
+    function setShader(want) {
+      const def = byKey.get(keyFor(want));
+      const r = programFor(def);
+      if (r.error) return { error: def.key + ': ' + r.error };
+      entry = r.entry;
+      key = def.key;
+      return true;
+    }
+
+    function setParams(p) { Object.assign(params, p); }
+
+    function resize(w, h) {
+      if (canvasEl.width !== w) { canvasEl.width = w; mask = null; }
+      if (canvasEl.height !== h) { canvasEl.height = h; mask = null; }
+      gl.viewport(0, 0, canvasEl.width, canvasEl.height);
+    }
+
+    /**
+     * The ink, as the engine drew it: a 2D canvas whose rgb is the ink colour the
+     * app chose and whose alpha is where that ink lands. Uploaded once per redraw,
+     * not once per animation frame - a full frame of RGBA at 60 Hz is a megabytes
+     * per second cost for data that only changes when the picture does.
+     *
+     * The mask has to be the same size as this canvas or the coverage lands on the
+     * wrong pixels, which is not a subtle failure: it is the pattern drawn in the
+     * wrong place. Refusing and saying so is cheaper than discovering it as a blur.
+     */
+    function setMask(src) {
+      if (!inkRole) return { error: 'setMask belongs to the ink role.' };
+      if (!src || !src.width || !src.height) return { error: 'the ink mask is empty.' };
+      if (src.width !== canvasEl.width || src.height !== canvasEl.height) {
+        return { error: `the ink mask is ${src.width}x${src.height} but the ink canvas is `
+          + `${canvasEl.width}x${canvasEl.height}.` };
+      }
+      if (!maskTex) {
+        maskTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, maskTex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        /* CLAMP, not REPEAT: the mask covers exactly the frame. A wrapped mask would
+         * paste the other edge of the picture into the antialiased border. */
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      }
+      gl.bindTexture(gl.TEXTURE_2D, maskTex);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+      mask = { w: src.width, h: src.height };
+      return true;
+    }
+
+    /* phase is the app's clock in seconds and may be any size: it is folded
+     * into the field's loop here, which is safe exactly because every body is
+     * written as harmonics of u_time / u_loop. */
+    function render(phase) {
+      if (!entry) return false;
+      const loop = entry.def.loop || 60;
+      let t = (isFinite(phase) ? phase : 0) % loop;
+      if (t < 0) t += loop;
+      const u = entry.u;
+      gl.useProgram(entry.prog);
+      gl.bindBuffer(gl.ARRAY_BUFFER, entry.buf);
+      gl.enableVertexAttribArray(entry.pos);
+      gl.vertexAttribPointer(entry.pos, 2, gl.FLOAT, false, 0, 0);
+      gl.disable(gl.DEPTH_TEST);
+      gl.uniform1f(u.time, t);
+      gl.uniform1f(u.loop, loop);
+      gl.uniform2f(u.res, canvasEl.width, canvasEl.height);
+      gl.uniform1f(u.scale, params.scale);
+      gl.uniform1f(u.seed, params.seed);
+      gl.uniform1f(u.mix, params.mix);
+      if (u.scrim) gl.uniform1f(u.scrim, params.scrim);
+      if (u.relief) gl.uniform1f(u.relief, params.relief);
+      gl.uniform3fv(u.a, params.a);
+      gl.uniform3fv(u.b, params.b);
+      if (inkRole) {
+        if (!mask) return false;      /* an ink field with nothing to paint into */
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, maskTex);
+        gl.uniform1i(u.mask, 0);
+      }
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      return true;
+    }
+
+    return {
+      ok: true,
+      role,
+      get key() { return key; },
+      setShader, setParams, resize, render,
+      /* Reported so a gate can ask what the field was told, the way it already can
+       * ask which body is current: a mask that never arrived and a mask that arrived
+       * at the wrong size look identical on screen. */
+      get maskSize() { return mask ? [mask.w, mask.h] : null; },
+      setMask
+    };
+  }
+
+  window.TruchetShaders = {
+    createGround,
+    keyFor,
+    hexToRGB,
+    DEFAULTS,
+    list: SHADERS.map(d => ({ key: d.key, label: d.label, loop: d.loop }))
+  };
+})();
+
+</script>
+<script>
 /* Truchet Studio — Generator tab (Phase 1d)
  * Single faithful engine (src/engine.js); this file is UI only. */
 (function () {
   'use strict';
   const T = window.Truchet;
+  const SH = window.TruchetShaders;
 
   /* ================= state ================= */
   /* The starting picture is the one the app was last tested with, so opening
@@ -904,6 +1659,16 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     motifs: ['/', '\\'],// selection set: motif names, 'mix', or several of both
     pal: 'custom',      // palette key or 'custom'
     c1: '#101018', c2: '#3a6ea5', bg: '#f4efe6', // custom ramp
+    ground: 'solid',    // 'solid' paints the ground colour; 'shader' runs a field
+    shader: 'mesh',     // TruchetShaders key
+    shSpeed: 1, shScale: 1,
+    shMix: 45,          // % of the field folded onto the picture's own ramp
+    scrim: 45,          // % of the ground colour laid back over the field
+    ink: 'solid',       // 'solid' paints the ink colour; 'shader' paints ink with a field
+    inkShader: 'mesh',  // TruchetShaders key, the same fields as the ground
+    inkSpeed: 1, inkScale: 1,
+    inkPig: 45,         // % of the ink's own colour replaced by the field's hue
+    inkRelief: 25,      // % of the way to the ground a pixel of ink is allowed to drift
     pad: 0,             // margin percent
     format: '1:1',      // frame format key, or 'custom'
     res: 3840,          // long edge in px when a preset format is used (the 4K step)
@@ -1022,7 +1787,16 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
   const HASH_KEYS = {
     tiling: 't', n: 'n', splits: 'sp',
     maxd: 'md', seed: 'sd', motifs: 'm', pal: 'p', c1: 'c1', c2: 'c2',
-    bg: 'bg', pad: 'pd', format: 'F', res: 'rs', fw: 'fw', fh: 'fh', tab: 'tb'
+    bg: 'bg', pad: 'pd', format: 'F', res: 'rs', fw: 'fw', fh: 'fh', tab: 'tb',
+    /* A shader ground is shareable: the field is a pure function of time, the
+     * frame's size, the seed and these four numbers, so a link reopens on the
+     * same field at the same phase — only the clock under it keeps running. */
+    ground: 'gr', shader: 'sh', shSpeed: 'ss', shScale: 'sc', shMix: 'sm',
+    scrim: 'sr',
+    /* The same argument for ink: a field-ink picture is a function of the tiling,
+     * the frame, the seed, the ink the engine drew and these five numbers. */
+    ink: 'ik', inkShader: 'ikf', inkSpeed: 'iksp', inkScale: 'iksz',
+    inkPig: 'ikc', inkRelief: 'ikr'
   };
   function writeHash() {
     const p = new URLSearchParams();
@@ -1194,12 +1968,287 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     return (depth, t) => map.get(t.x + ',' + t.y + ',' + t.s) ||
       T.connIdxByName('/');
   }
-  function buildPalette(tiles) {
-    if (S.pal !== 'custom') return T.PALETTES[S.pal] || T.PALETTES.bw;
+  /* The two colours a tile paints with, per depth: [circuits drawn on top,
+   * circuits drawn under]. The engine composites a tile as two opaque colour
+   * classes that together cover 0.98-0.99 of its square, so the second entry IS
+   * the ground seen inside the tile — which is the handle a shader ground needs.
+   * With a field running, the under class turns fully transparent: the tile stops
+   * repainting its own square, the field behind it shows through, and only the
+   * ink class is painted. Nothing about the tile list reaches the field, so it
+   * stays one continuous picture rather than one gradient per cell. */
+  const CLEAR = 'rgba(0,0,0,0)';
+  function shaderOn() {
+    return S.ground === 'shader' && !!groundGl && !groundFailed;
+  }
+  function paletteColors() {            // [ink, ground] as #hex, whichever palette
+    if (S.pal === 'custom') return [S.c1, S.bg];
+    const p = T.PALETTES[S.pal] || T.PALETTES.bw;
+    return [p[0], p[1]];
+  }
+  function buildPalette(tiles, pass) {
+    /* Which of the two circuit classes a pass is allowed to paint. Normally both.
+     * A field ground hides the under class so the field shows through; a field ink
+     * needs two passes over the same geometry - one that paints only the ink class
+     * (that render becomes the mask the field is poured into) and one that paints
+     * everything but the ink class (the canvas the field sits on). */
+    const clear = (pass === 'mask') || shaderOn();
+    const clearInk = pass === 'noInk';
+    if (S.pal !== 'custom') {
+      const p = T.PALETTES[S.pal] || T.PALETTES.bw;
+      return [clearInk ? CLEAR : p[0], clear ? CLEAR : p[1]];
+    }
     let maxD = 0;
     for (const t of tiles) maxD = Math.max(maxD, T.tileDepth(t));
     maxD = Math.max(1, maxD);
-    return (depth) => [T.lerpColor(S.c1, S.c2, depth / maxD), S.bg];
+    return (depth) => [
+      clearInk ? CLEAR : T.lerpColor(S.c1, S.c2, depth / maxD),
+      clear ? CLEAR : S.bg
+    ];
+  }
+
+  /* ================= animated ground =================
+   * Two canvases, not one: a canvas has either a 2D or a WebGL context, so the
+   * field cannot be drawn into the tile canvas. #groundCanvas carries the GL
+   * field, #mainCanvas carries the tiles over it with its light class left
+   * transparent (see buildPalette), and the two are sized identically so the
+   * stack is exact. */
+  const groundCanvas = document.getElementById('groundCanvas');
+  let groundGl = null;
+  let groundFailed = false;
+  const groundClock = document.createElement('canvas');   // export-sized field
+  let groundClockGl = null;             // its GL partner, made once on demand
+  let groundPhase = 0, groundLast = 0, groundRAF = 0;
+
+  /* The seed drives the field too: the same seed gives the same blob positions
+   * and the same palette offsets, so a link's ground is as much its own as its
+   * tiling is, and 'new seed' moves both together. */
+  const fieldSeed = () =>
+    (T.seedFromString(S.seed) % 100003) / 100003;
+
+  function ensureGroundGL(canvasEl) {
+    if (!SH || !SH.createGround) { groundFailed = true; return null; }
+    const g = SH.createGround(canvasEl);
+    if (!g || !g.ok) {
+      groundFailed = true;
+      showError((g && g.reason) || 'Could not start the shader ground.');
+      return null;
+    }
+    return g;
+  }
+  /* The colour the frame's background is made of. Under a shader ground the
+   * palette's second entry is transparent - it is the class the field shows
+   * through - so the ground colour has to be asked for from the frame, not read
+   * out of the tile palette. */
+  function fieldGroundColor() {
+    if (S.pal === 'custom') return S.bg;
+    const p = T.PALETTES[S.pal] || T.PALETTES.bw;
+    return p[1];
+  }
+
+  function pushParams(g) {
+    if (!g) return;
+    const [ink] = paletteColors();
+    g.setParams({
+      scale: clamp(+S.shScale || 1, 0.2, 6),
+      mix: clamp(+S.shMix || 0, 0, 100) / 100,
+      scrim: clamp(+S.scrim || 0, 0, 100) / 100,
+      a: SH.hexToRGB(ink), b: SH.hexToRGB(fieldGroundColor()),
+      seed: fieldSeed()
+    });
+    /* Set the program last: setParams must land on whatever shader ends up
+     * current, and setShader recompiles the program uniforms belong to. */
+    if (g.key !== S.shader) {
+      const r = g.setShader(SH.keyFor(S.shader));
+      if (r !== true) {
+        groundFailed = true;
+        showError('Shader failed to compile: ' + r.error);
+      } else if (groundFailed) {
+        groundFailed = false; clearError();
+      }
+    }
+  }
+  /* Called from onChange, i.e. whenever anything in the state moved. */
+  function syncGround() {
+    if (S.ground !== 'shader') { groundFailed = false; return; }
+    if (!groundGl && !groundFailed) groundGl = ensureGroundGL(groundCanvas);
+    pushParams(groundGl);
+  }
+
+  /* ================= ink painted by a field =================
+   * The ink is the shape, so the field is not allowed to draw any of it. The
+   * engine draws the tiles into inkMask exactly as it always did - same lattice,
+   * same transform, same circuits, same wing rules, same per-depth ink colour - and
+   * only the *colour* of that render is replaced: #inkCanvas is the same field the
+   * ground can use, told to paint only where the mask has ink, and to keep the
+   * ink's own lightness (see INK_MAIN in src/shaders.js). #mainCanvas then draws
+   * the picture with its ink class left out, and the field canvas sits over it.
+   *
+   * Two canvases rather than repainting the tiles every frame: re-rendering the
+   * geometry at 60 Hz to animate an ink colour is the expensive way to do something
+   * a texture upload already did once, and it would put the shape at the mercy of a
+   * second drawing path. The mask is uploaded when the picture changes, not when the
+   * clock ticks. */
+  const inkCanvas = document.getElementById('inkCanvas');
+  const inkMask = document.createElement('canvas');
+  let inkGl = null, inkFailed = false;
+  let inkPhase = 0;
+  const inkClock = document.createElement('canvas');    // export-sized ink field
+  const inkClockMask = document.createElement('canvas');
+  let inkClockGl = null;
+
+  function inkOn() { return S.ink === 'shader' && !!inkGl && !inkFailed; }
+
+  function ensureInkGL(canvasEl) {
+    if (!SH || !SH.createGround) { inkFailed = true; return null; }
+    const g = SH.createGround(canvasEl, 'ink');
+    if (!g || !g.ok) {
+      inkFailed = true;
+      showError((g && g.reason) || 'Could not start the shader ink.');
+      return null;
+    }
+    return g;
+  }
+
+  function pushInkParams(g) {
+    if (!g) return;
+    const [ink, ground] = paletteColors();
+    g.setParams({
+      scale: clamp(+S.inkScale || 1, 0.2, 6),
+      mix: clamp(+S.inkPig || 0, 0, 100) / 100,
+      relief: clamp(+S.inkRelief || 0, 0, 100) / 100,
+      /* u_b is the ground the ink has to be read against, because relief is
+       * measured as a share of that gap. u_a is unused by the ink program - the ink's
+       * colour arrives per pixel through the mask, including the way it drifts along
+       * the custom ramp by depth, which a uniform cannot carry. */
+      a: SH.hexToRGB(ink), b: SH.hexToRGB(ground),
+      seed: fieldSeed()
+    });
+    if (g.key !== S.inkShader) {
+      const r = g.setShader(SH.keyFor(S.inkShader));
+      if (r !== true) {
+        inkFailed = true;
+        showError('Ink field failed to compile: ' + r.error);
+      } else if (inkFailed) { inkFailed = false; clearError(); }
+    }
+  }
+
+  function syncInk() {
+    if (S.ink !== 'shader') { inkFailed = false; return; }
+    if (!inkGl && !inkFailed) inkGl = ensureInkGL(inkCanvas);
+    pushInkParams(inkGl);
+  }
+
+  /* The ink as the engine draws it: same geometry, ink class only, nothing behind
+   * it. Its rgb is the ink colour chosen and its alpha is where the ink lands. */
+  function paintInkMask(target, maskCanvas, w, h, tiles) {
+    maskCanvas.width = w; maskCanvas.height = h;
+    drawScene(maskCanvas, tiles, w, h, null, 'mask');
+    const r = target.setMask(maskCanvas);
+    if (r !== true) { inkFailed = true; showError('Ink field: ' + r.error); return false; }
+    return true;
+  }
+
+  /* One frame of field-ink over the tile canvas. Returns true when the ink class
+   * was left out of #mainCanvas, which is what tells drawScene not to paint it. */
+  function paintInk(w, h, tiles) {
+    if (!inkOn()) { inkCanvas.style.display = 'none'; return false; }
+    if (!tiles || !tiles.length) { inkCanvas.style.display = 'none'; return false; }
+    inkCanvas.style.display = 'block';
+    inkCanvas.style.width = canvas.style.width;
+    inkCanvas.style.height = canvas.style.height;
+    inkGl.resize(w, h);
+    if (!paintInkMask(inkGl, inkMask, w, h, tiles)) { inkCanvas.style.display = 'none'; return false; }
+    if (!inkGl.render(inkPhase)) { inkCanvas.style.display = 'none'; return false; }
+    startGroundLoop();
+    return true;
+  }
+
+  /* The field-ink at export size, mask and all: the file has to carry the same ink
+   * the preview shows, at the export's own pixel size rather than as an upscaled
+   * copy of the preview. */
+  function inkFieldSnapshot(w, h) {
+    if (!inkOn()) return null;
+    if (!inkClockGl) {
+      inkClockGl = ensureInkGL(inkClock);
+      if (!inkClockGl) return null;
+    }
+    pushInkParams(inkClockGl);
+    inkClockGl.resize(w, h);
+    if (!paintInkMask(inkClockGl, inkClockMask, w, h, buildTiling())) return null;
+    if (!inkClockGl.render(inkPhase)) return null;
+    return inkClock;
+  }
+  /* The field's clock advances by dt * speed rather than wall-time * speed: a
+   * phase accumulator means moving the speed slider changes how fast the field
+   * runs from here without jumping it to another frame. */
+  function groundStep(dt) {
+    groundPhase += dt * clamp(+S.shSpeed || 0, 0, 4);
+    inkPhase += dt * clamp(+S.inkSpeed || 0, 0, 4);
+  }
+  function stopGroundLoop() {
+    if (groundRAF) cancelAnimationFrame(groundRAF);
+    groundRAF = 0;
+  }
+  function startGroundLoop() {
+    if (groundRAF) return;
+    groundLast = 0;
+    const frame = (ts) => {
+      /* An animating canvas behind an invisible tab is pure GPU burn: the loop
+       * sleeps while the page is backgrounded and resumes where it left off. */
+      if (document.hidden) { groundRAF = requestAnimationFrame(frame); groundLast = 0; return; }
+      if (!shaderOn() && !inkOn()) { groundRAF = 0; return; }
+      const dt = groundLast ? Math.min(0.1, (ts - groundLast) / 1000) : 0;
+      groundLast = ts;
+      groundStep(dt);
+      if (shaderOn()) {
+        groundGl.resize(canvas.width, canvas.height);
+        groundGl.render(groundPhase);
+      }
+      /* The ink canvas is not resized here: a resize would drop the mask it was
+       * given, and the mask only changes when the picture does - which is paintInk's
+       * job, on redraw, not the clock's. */
+      if (inkOn()) inkGl.render(inkPhase);
+      groundRAF = requestAnimationFrame(frame);
+    };
+    groundRAF = requestAnimationFrame(frame);
+  }
+  /* Paint one frame of the field on its own canvas under the tile canvas.
+   * Returns whether the ground is a field, so drawScene knows not to paint a
+   * flat ground rect over the canvas that is already showing one. */
+  function paintGround(w, h) {
+    if (!shaderOn()) {
+      groundCanvas.style.display = 'none';
+      /* The same animation loop drives both fields, so it only stops when
+       * neither of them is moving. */
+      if (!inkOn()) stopGroundLoop();
+      return false;
+    }
+    groundCanvas.style.display = 'block';
+    groundCanvas.style.width = canvas.style.width;
+    groundCanvas.style.height = canvas.style.height;
+    groundGl.resize(w, h);
+    groundGl.render(groundPhase);
+    startGroundLoop();
+    return true;
+  }
+  /* The field alone, at export size, for compositing into the exported PNG.
+   * u_res is the canvas itself, so a 3840x2160 export gets the same field the
+   * preview shows — the same world units per pixel, not a stretched copy. */
+  function fieldSnapshot(w, h) {
+    if (!shaderOn()) return null;
+    if (!groundClockGl) {
+      groundClock.width = w; groundClock.height = h;
+      groundClockGl = ensureGroundGL(groundClock);
+      if (!groundClockGl) return null;
+    }
+    if (groundClock.width !== w || groundClock.height !== h) {
+      groundClock.width = w; groundClock.height = h;
+    }
+    groundClockGl.setShader(SH.keyFor(S.shader));
+    pushParams(groundClockGl);
+    groundClockGl.resize(w, h);
+    groundClockGl.render(groundPhase);
+    return groundClock;
   }
 
   /* ================= main view ================= */
@@ -1216,12 +2265,27 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     const p = (S.pad / 100) * (x1 - x0);
     return [x0 - p, y0 - p, x1 + p, y1 + p];
   }
-  function drawScene(c, tiles, w, h) {
+  /* What lies under the tiles, for one pass of drawScene:
+   *   null            no field: the ground is one flat rect, as it always was
+   *   'under'         a field is on the canvas below this one: paint nothing, and
+   *                   keep the tile canvas transparent where no ink lands so that
+   *                   field reads through the ink instead of being copied under it
+   *   a canvas        a field handed over as an image, for the export pass
+   */
+  function drawScene(c, tiles, w, h, ground, pass) {
     const cx = c.getContext('2d');
     cx.setTransform(1, 0, 0, 1, 0, 0);
-    cx.fillStyle = (S.pal === 'custom') ? S.bg
-      : (T.PALETTES[S.pal] || T.PALETTES.bw)[1];
-    cx.fillRect(0, 0, w, h);
+    cx.globalAlpha = 1;
+    cx.clearRect(0, 0, w, h);
+    if (pass === 'mask') { /* the ink mask must be transparent wherever there is no ink,
+                            * so nothing goes behind it: not a ground, not even a colour */ }
+    else if (ground === 'under') { /* the ground canvas below carries it */ }
+    else if (ground) cx.drawImage(ground, 0, 0, w, h);
+    else { cx.fillStyle = paletteColors()[1]; cx.fillRect(0, 0, w, h); }
+    /* The scrim is not applied here: it is part of the ground, folded into the
+     * field by the shader's own tail, so the preview and the export carry the
+     * same ground once instead of an overlay applied through whichever path
+     * happened to draw the frame. */
     if (!tiles.length) return;   // ground only; there is nothing to fit
     /* The lattice already carries the frame's ratio, so this scales with no
      * clipping in the normal case; 'cover' only matters when an odd custom
@@ -1244,9 +2308,13 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     cx.setTransform(s, 0, 0, -s, -s * wx0, h + s * wy0);
     T.renderTiling(cx, tiles, {
       pickTile: (tabDef().picker || buildPicker)(tiles),
-      palette: buildPalette(tiles),
+      palette: buildPalette(tiles, pass),
       bounds: [wx0, wy0, wx0 + winW, wy0 + winH]
     });
+    /* Leave the context as it was found. A caller that draws a full-frame overlay
+     * onto this canvas after the fact - the export compositing the ink field - would
+     * otherwise draw through the lattice transform without meaning to. */
+    cx.setTransform(1, 0, 0, 1, 0, 0);
   }
   function updateFrameInfo(tiles) {
     const el = document.getElementById('frameInfo');
@@ -1293,21 +2361,26 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
       paintPreviews();
     }
     const def = tabDef();
+    /* The ground is painted first and independently: it is a full-frame field
+     * that does not care what the tiling is, and a tab that is not ready yet
+     * (Photo with no image chosen) still gets the ground it will have once it
+     * is. The empty-stage branches below therefore keep the same ground. */
+    const field = paintGround(w, h) ? 'under' : null;
     if (!def.ready()) {
       /* Nothing to draw yet (Photo with no image chosen): paint just the
        * ground, so the stage still shows the frame and its real colour. */
-      const cx = canvas.getContext('2d');
-      cx.setTransform(1, 0, 0, 1, 0, 0);
-      cx.fillStyle = (S.pal === 'custom') ? S.bg
-        : (T.PALETTES[S.pal] || T.PALETTES.bw)[1];
-      cx.fillRect(0, 0, w, h);
+      drawScene(canvas, [], w, h, field);
       const info = document.getElementById('frameInfo');
       if (info) info.textContent = def.emptyMessage;
       if (def.onRedraw) def.onRedraw();
       return;
     }
     const tiles = buildTiling();
-    drawScene(canvas, tiles, w, h);
+    /* The ink class is left out of this canvas only when the field canvas is really
+     * going to paint it. A field ink that failed to compile must fall back to the
+     * plain ink, not quietly draw a picture with no strokes on it. */
+    const inkField = paintInk(w, h, tiles);
+    drawScene(canvas, tiles, w, h, field, inkField ? 'noInk' : undefined);
     updateFrameInfo(tiles);
     if (def.onRedraw) def.onRedraw();   // a tab reports its own state here
   }
@@ -1323,6 +2396,13 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     const L = lattice();
     const sizePart = L.cols + 'x' + L.rows;
     const pal = S.pal === 'custom' ? 'ramp' : S.pal;
+    /* A shader ground is part of the picture, so the file name says which field
+     * the PNG carries: two links that differ only in their ground would
+     * otherwise export files with identical names. */
+    const groundPart = shaderOn() ? '_sh' + SH.keyFor(S.shader) + '_p' + pal : '_p' + pal;
+    /* Field ink changes the colour of every stroke, so a file name that only named
+     * the palette would let two different pictures land on the same name. */
+    const inkPart = inkOn() ? '_ik' + SH.keyFor(S.inkShader) + '_k' + S.inkPig + 'r' + S.inkRelief : '';
     const pool = motifPool();
     const isMix = pool.length === T.MOTIF_NAMES.length &&
       pool.every((m, i) => m === T.MOTIF_NAMES[i]);
@@ -1331,13 +2411,28 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
      * builds its pictures another way supplies its own word. */
     const mode = tabDef().mode ? tabDef().mode() : S.tiling;
     return (tabDef().prefix || 'truchet_') + mode + sizePart + '_' + S.seed +
-      '_m' + motif + '_p' + pal + '_' + w + 'x' + h + '.png';
+      '_m' + motif + groundPart + inkPart + '_' + w + 'x' + h + '.png';
   }
   function exportPNG() {
     const [w, h] = framePx();
     const off = document.createElement('canvas');
     off.width = w; off.height = h;
-    drawScene(off, buildTiling(), w, h);
+    /* The export carries the frame of the field that is on screen right now:
+     * what the preview shows is what the file gets, at the export's own pixel
+     * size rather than an upscaled copy of the preview. */
+    const field = fieldSnapshot(w, h);
+    const inkField = inkFieldSnapshot(w, h);
+    drawScene(off, buildTiling(), w, h, field, inkField ? 'noInk' : undefined);
+    /* over the ground and the tiles, in the same order the page stacks them.
+     * drawScene leaves the context carrying the lattice's own transform - scaled and
+     * flipped - so compositing a full-frame canvas after it has to put the identity
+     * back first. Drawing the ink field through that transform put it entirely off
+     * the canvas: a file with the ground in it and the ink nowhere. */
+    if (inkField) {
+      const oc = off.getContext('2d');
+      oc.setTransform(1, 0, 0, 1, 0, 0);
+      oc.drawImage(inkField, 0, 0);
+    }
     const name = exportName(w, h);
     off.toBlob((blob) => {
       const a = document.createElement('a');
@@ -1355,8 +2450,30 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     tiling: 'selTiling', n: 'inN', format: 'selFormat',
     fw: 'inFrameW', fh: 'inFrameH', res: 'selRes',
     splits: 'inSplits', maxd: 'inMaxd', seed: 'inSeed', pal: 'selPal',
-    c1: 'inC1', c2: 'inC2', bg: 'inBg', pad: 'inPad'
+    c1: 'inC1', c2: 'inC2', bg: 'inBg', pad: 'inPad',
+    ground: 'selGround', shader: 'selShader',
+    shSpeed: 'inShSpeed', shScale: 'inShScale', shMix: 'inShMix',
+    scrim: 'inScrim',
+    ink: 'selInk', inkShader: 'selInkShader',
+    inkSpeed: 'inInkSpeed', inkScale: 'inInkScale',
+    inkPig: 'inInkPig', inkRelief: 'inInkRelief'
   };
+  /* The field lists are built from the ground module rather than written here, so
+   * adding a field to src/shaders.js puts it in both pickers on its own: the same
+   * bodies serve the ground and the ink, and a list kept twice would drift. */
+  function buildShaderPicker() {
+    for (const [sel, current] of [['selShader', S.shader], ['selInkShader', S.inkShader]]) {
+      const el = $(sel);
+      if (!el || !SH) continue;
+      el.innerHTML = '';
+      for (const s of SH.list) {
+        const o = document.createElement('option');
+        o.value = s.key; o.textContent = s.label; o.title = s.label;
+        el.appendChild(o);
+      }
+      el.value = SH.keyFor(current);
+    }
+  }
   function pushToInputs() {
     $('selTiling').value = S.tiling;
     $('inN').value = S.n;              // its read-out lives in refreshParamVisibility
@@ -1367,6 +2484,18 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     $('inSeed').value = S.seed; $('selPal').value = S.pal;
     $('inC1').value = S.c1; $('inC2').value = S.c2; $('inBg').value = S.bg;
     $('inPad').value = S.pad;
+    $('selGround').value = S.ground;
+    /* A field name the app does not know - a mistyped share link, a key left over
+     * from an older build - is resolved in the state, not only in the picker, so the
+     * picker, the picture on screen, the link written back out and the export name
+     * all end up naming the same field instead of each picking its own. */
+    $('selShader').value = S.shader = SH ? SH.keyFor(S.shader) : S.shader;
+    $('inShSpeed').value = S.shSpeed; $('inShScale').value = S.shScale;
+    $('inShMix').value = S.shMix; $('inScrim').value = S.scrim;
+    $('selInk').value = S.ink;
+    $('selInkShader').value = S.inkShader = SH ? SH.keyFor(S.inkShader) : S.inkShader;
+    $('inInkSpeed').value = S.inkSpeed; $('inInkScale').value = S.inkScale;
+    $('inInkPig').value = S.inkPig; $('inInkRelief').value = S.inkRelief;
   }
   function refreshParamVisibility() {
     const show = (id, on) => $(id).style.display = on ? '' : 'none';
@@ -1382,6 +2511,32 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     $('lblRes').textContent = 'long edge';
     show('rowRand', def.params === 'genParams' && S.tiling === 'rand');
     show('rowCustomPal', S.pal === 'custom');
+    const field = S.ground === 'shader';
+    show('rowShader', field);
+    show('rowShade', field);
+    const gi = $('groundInfo');
+    if (gi) {
+      gi.textContent = field
+        ? (groundFailed
+          ? 'shader ground unavailable \u2014 the flat ground colour is being used instead'
+          : (SH ? SH.keyFor(S.shader) : S.shader) + ' \u00b7 speed ' + S.shSpeed +
+            ' \u00b7 scale ' + S.shScale + ' \u00b7 palette ' + S.shMix +
+            '% \u00b7 scrim ' + S.scrim + '%')
+        : '';
+    }
+    const painted = S.ink === 'shader';
+    show('rowInkShader', painted);
+    show('rowInkShade', painted);
+    const ii = $('inkInfo');
+    if (ii) {
+      ii.textContent = painted
+        ? (inkFailed
+          ? 'ink field unavailable \u2014 the plain ink colour is being used instead'
+          : (SH ? SH.keyFor(S.inkShader) : S.inkShader) + ' \u00b7 speed ' + S.inkSpeed +
+            ' \u00b7 scale ' + S.inkScale + ' \u00b7 pigment ' + S.inkPig +
+            '% \u00b7 relief ' + S.inkRelief + '%')
+        : '';
+    }
     /* The density range depends on the frame: a 1:1 frame can carry far more
      * tiles than a 21:9 one before the tile caps bite. Clamping here keeps the
      * control honest instead of silently saturating. */
@@ -1405,7 +2560,12 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     }
   }
   function onChange() {
-    writeHash(); refreshParamVisibility(); renderMain(); updateMotifSel();
+    /* Resolve a field name the app does not know before anything else reads the
+     * state: the hash that gets written back out, the two pickers, the render, the
+     * export and its file name all end up naming the same field. */
+    if (SH) { S.shader = SH.keyFor(S.shader); S.inkShader = SH.keyFor(S.inkShader); }
+    writeHash(); refreshParamVisibility(); syncGround(); syncInk(); renderMain();
+    updateMotifSel();
   }
   for (const [k, id] of Object.entries(FIELDS)) {
     $(id).addEventListener('input', () => {
@@ -1561,9 +2721,12 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
   S.motifs = (S.motifs || []).filter(
     (m) => m === 'mix' || T.MOTIF_NAMES.includes(m));
   if (!S.motifs.length) S.motifs = ['/'];
+  buildShaderPicker();     // before pushToInputs: the value must exist as an option
   pushToInputs();
   buildMotifGrid();
   refreshParamVisibility();
+  syncGround();
+  syncInk();
   renderMain();
   updateMotifSel();
   let rAF = 0;
@@ -1575,6 +2738,9 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
   window.TruchetApp = {
     hooks: {},                       // tabs fill these in: hooks.photo = {...}
     registerTab,
+    DEFAULTS,                        // the opening state. A gate that judges the
+                                     // defaults has to read the ones the product
+                                     // ships, not carry a copy of its own
     hashGet,                       // one raw ask from the link, for a tab's own keys
     state: () => S,
     frameRatio, framePx, lattice, latticeMaxT,
@@ -1583,7 +2749,13 @@ if (typeof window !== 'undefined') window.Truchet = Truchet;
     buildTiling: buildTiling,           // dev harnesses: the tab shell's tiling path
     tab: () => S.tab,
     setTab, setBaseScale, baseScale,
-    showError, clearError, onChange
+    showError, clearError, onChange,
+    /* The ink mask is the one thing a gate cannot rebuild from the outside: it is
+     * what the app drew for the field to be poured into, at the size the app drew
+     * it at. A gate that wants to prove the shape survived has to be able to look
+     * at it, the same way it looks at buildTiling(). */
+    inkParts: () => ({ gl: inkGl, mask: inkMask, clock: inkClock, clockGl: inkClockGl,
+      phase: inkPhase, failed: inkFailed })
   };
 })();
 

@@ -8,7 +8,12 @@ Multi-Scale Truchet Patterns (christophercarlson.com). Vanilla JS + canvas.
 Plan: 5 tabs (Generator, Fill, Photo, Composer, Mandala) on one engine — the
 Mandala one was built and then removed at the user's request, see below.
 
-## Status (Generator + Photo solid; Mandala tried and removed)
+Two bodies of work live here now, and each has its own section to read: the tile shape,
+which is documented as a rule under *"How big is a tile?"* in `src/engine.js` and at
+length below; and the ground the tiles sit on, which is *The ground: ten fields that move
+under the tiles*.
+
+## Status (Generator + Photo + animated ground + animated ink; Mandala tried and removed)
 - ENGINE (`src/engine.js`) = literal port of Carlson's Wolfram package
   (`mstp/MultiScaleTruchetPatterns.wl`). Validated against Python oracle
   `dev/port.py` — measured tile by tile by the gates listed under *Running the gates*.
@@ -18,7 +23,7 @@ Mandala one was built and then removed at the user's request, see below.
   `ready()`, `tiles(lattice)`, `picker(tiles)`, optional
   `onShow`/`onRedraw`/`viewBounds`/`mode`/`share`. Live tabs: **Generator**,
   **Photo** and **Fill** (Composer is still a placeholder).
-  `node build.js` -> `dist/truchet.html` (single file, ~113 KB: engine + app +
+  `node build.js` -> `dist/truchet.html` (single file, ~173 KB: engine + shaders + app +
   photo + fill inlined).
   Always open `index.html` with a cache-buster (`?v=<commit>`) when verifying.
 - Photo tab (`src/photo.js`): Carlson's quadtree multi-scale subdivision driven
@@ -110,6 +115,183 @@ holes inside tiles, "broken lens" segments, pattern bleeding off canvas edge.
   24 names (best-match per cell). Run it on a screenshot of our motif grid
   and on Carlson's figure in `refs/` and compare the two match lists.
 
+## The ground: ten fields that move under the tiles
+
+The `bg` colour became a choice: a colour, or one of ten animated fields
+(`src/shaders.js`, plain WebGL, no library). The requirement came from the picture, not
+from the technology: a field had to behave as one field across the whole frame, not as a
+pattern repeated inside every cell. The look the user asked for is `shader.jpg`, kept at
+the repo root - their reference image, untracked and not published.
+
+**A frame, not a tiled ground.** The field is its own `<canvas>` under the tile canvas,
+rendered once across the frame at the same pixel size, and `buildPalette()` makes the
+under class fully transparent while a field is up - the only arrangement that lets a
+field show through without the tiles' own backgrounds covering it. A canvas cannot hold a
+GL context and a 2D one, so there are two canvases. Since the field is now the only thing
+behind the ink, it has to be opaque, and every body ends the same way -
+`gl_FragColor = vec4(finish(col), 1.0);` - because the alpha is not something a field may
+choose. That was a trap: six fields were quietly see-through until something measured
+coverage, and a field that leaves holes in the frame is indistinguishable from the frame
+having no field at all.
+
+**The clock is a loop, not a running total.** `ph() = u_time / u_loop * TAU`, and every
+field moves on `ph()` or on noise sampled along a closed path. A loop is worth having for
+one reason: a field whose motion is a whole harmonic can be *checked* - a frame at phase 0
+and a frame at phase `u_loop` are compared, and drift shows up as a jump against the
+ordinary step between frames. That check catches fields that drift, not fields that are
+frozen, so motion is measured separately.
+
+**The fold walks the ramp in lightness order.** The palette percentage (`sm`) folds the
+field's colours onto the picture's own ramp, so a busy field cannot turn a five-colour
+picture into a rainbow. The fold maps the field's own lightness onto the ramp - dark end
+to light end, whichever of the two palette colours is darker - so it can recolour a field
+but cannot invert it. An earlier version picked a hue by hashing lightness, which
+scrambled the field's internal ordering, and `wash` - a field that paints no colours of
+its own and is all lightness - came out flat because of it.
+
+**A fold may recolour a ground; it may not invert it.** That is the claim the gate
+measures: render a field with the fold off, render it with the fold on, correlate the two
+per pixel. All ten fields come out at 1.00. A fold that recoloured while scrambling the
+lightness ordering would still land every pixel on the ramp and correlate badly, and the
+gate would say so.
+
+**The scrim replaced the noise mask, and the reason matters.** The first version patched
+ground colour back over the field through a drifting noise mask. It made pictures that
+looked like the old background - which is exactly the complaint that started this - and it
+dimmed towards black, which only separates a field from dark ink; with light ink it
+destroys contrast. The scrim (`sr`) is uniform and pulls towards the *ground* end of the
+palette, so it moves the field away from the ink whichever way the ink runs. `u_warp` is
+gone from the shaders, the UI and the share key.
+
+**Legibility is colour distance, not luminance.** All ten fields measured about a hundred
+luminance units clear of the ink, and one of them - Voronoi cells, with its dark navy
+patches - swallowed the edges of the dark ink blobs anyway. So the gates measure distance
+to the ink as a colour: how close the nearest field colour comes, how much of the frame
+gets that close, and how far the darkest five percent sits from the ink's own lightness,
+since that five percent is where an ink tile actually sits. Measured now: nearest field
+colour 95 to 173 units from the ink, no field matching the ink's colour anywhere, darkest
+five percent 97 to 144 units clear.
+
+**The negative pass.** A legibility gate that can never fire measures nothing, and mine
+could not have fired: the shipped fields never come near the ink. So the gate also runs
+against a ground given the ink's own colour, which a person can really do by typing the
+ink's hex into `bg`. All ten are turned down - the fold collapses onto a ramp with both
+ends the same colour, the field becomes the ink - and the gate says so out loud. A ground
+that could vanish can be caught.
+
+**The file gets the frame.** Save PNG is measured through the button a person actually
+presses, by reading the canvas handed to the encoder; the download itself is stubbed, so
+nothing reaches disk. Over a field: 3840x3840 for a 3840 frame, mean pixel difference 0.86
+against the preview composite, luminance correlation 0.999, and 51.6% of the file in
+colours the tile layer could not have produced on its own. Over a solid ground: 2.84,
+0.998 and **0.0%** - the solid case is the control, and its larger pixel difference is
+edge resampling, because the file is drawn at its own resolution rather than stretched.
+A field measured in the preview but missing from the file could not survive that pair.
+
+**Share keys:** `gr` (solid | shader), `sh` (field key), `ss` speed, `sc` scale, `sm`
+palette %, `sr` scrim %. Opening defaults: palette 45%, scrim 45%. A default is a
+legibility decision, and `python dev/_defaults.py "45/45 60/40 70/30"` is the sweep that
+made it: colour left in the ground rises 56 → 69 as the scrim drops, and the closest any
+field colour gets to the ink falls 95 → 62 in the same move. 45/45 keeps the widest
+margin; a future change to that pair is a trade between the two columns, not a free
+improvement.
+
+**Adding a field.** A body in the `SHADERS` table in `src/shaders.js` - the shared
+preamble hands it `p` in frame units, `t`, `ph()`, `frameUV()`, `cosPal()` and `fbm()` -
+and it has to move on `ph()`, finish with the opaque `vec4(finish(col), 1.0)`, and not
+depend on where the frame happens to start. `dev/shadertest.html` shows all ten at the
+same size, clock and palette with no app around them; `dev/_fold.html` shows one field
+through its own palette, which is the only comfortable place to judge what the palette
+percentage does.
+
+## The ink: the same ten fields, painted onto the strokes
+
+`Ink` gets the ground's solid/field choice, its own field picker, its own speed and size,
+and two dials of its own: **Pigment** (`ikc`, how much of the ink's own colour the field
+may replace) and **Relief** (`ikr`, the ink's lightness budget, 0–100%).
+
+A field cannot simply be painted over ink. Ink *is* the shape: mix naively and the strokes
+recolour unevenly, so a class stops meaning what the tiling means. Measured that way first
+— folding the field's raw colour onto ink left **9.96 % of the ink** (12 458 of 125 001 ink
+pixels) within 10 luminance units of the ground, because where the field's lightness
+happened to match the ink's the relief term multiplied to zero. That is precisely the
+failure the feature must not have, and the gate now measures it as `camo`.
+
+**How it is built.** Three canvases stack inside the frame:
+
+1. `#groundCanvas` (WebGL, behind) — a field, or a flat ground colour.
+2. `#mainCanvas` (2D) — the tiling drawn with the ink class *skipped* (`'noInk'` pass).
+3. `#inkCanvas` (WebGL, in front) — the field, kept only where the ink mask is opaque.
+
+The mask is the tiling rendered a third time (`buildPalette(tiles, 'mask')`) with only the
+ink class painted, on a transparent canvas; it is uploaded as `u_mask`, and the ink program
+keeps the field where its alpha is > 0 and discards it elsewhere. So a field can recolour
+ink but cannot move it. Two traps worth naming: sampling has to flip the mask's `y`
+(`1.0 - gl_FragCoord.y / u_res`) because a 2D canvas numbers rows from the top while
+`gl_FragCoord` numbers them from the bottom — without it every stroke lands inverted, which
+is exactly what the first run showed; and the ink context is `premultipliedAlpha: true` on
+purpose, because the program writes `col * coverage` and asking the compositor to divide it
+back out produces halos.
+
+**Relief is what makes a field visible in ink.** Each pixel is anchored to the ink's own
+lightness, then allowed to move only *away* from the ground, by at most
+`pigment × relief × (that pixel's distance to the ground)`, scaled by the field's own
+brightness: a stroke deepens where the field is bright and keeps its own lightness where the
+field is dark. A field can darken ink on a light ground or thicken a light stroke on a dark
+ground; it can never pull ink toward the ground, which is the one move that makes ink
+vanish. `atLightness(c, L)` scales a colour and then adds the remainder flat — scaling alone
+cannot reach a requested lightness for a saturated colour, which an earlier version learned
+the hard way by leaving the drift far below what relief promised.
+
+**Measured** (`dev/_inkfieldprobe.js` → `dev/_inkfieldqa.py`; 18 rows: the ten fields at
+defaults, four relief sweeps, `cells` over a preset palette, `veil` as an ink field over the
+`marble` ground field, `mesh` at full relief over `lava`, the black/white preset, and plain
+solid ink as the control):
+
+| What is measured | Result | Threshold |
+|---|---|---|
+| Shape survives — field output alpha vs the app's own mask alpha | `0.000` | 0.02 |
+| That mask vs the solid ink rendering | 0.015–0.023 | 0.03 |
+| Ink lost / drawn twice / drawn where it should not be / whole-canvas ink | 0, 0, 0, 0 | 0.5 % |
+| Lightness budget kept — pixels over `pigment × relief × own gap` | none reported | 1 % |
+| Ink invisible against the layer underneath | 0–0.28 % | 1.5 % |
+| Pigment 0 % really is a pure re-light (worst field, worst channel) | 0 | 2/255 |
+| Relief sweep (mesh, pigment 100, relief 0/25/50/100): mean \|ink − ground\| lightness gap | 0.7 → 14.2 → 22.4 → 29.7 (worst 3.8 → 43.3 → 64.5 → 85.4) | must grow, and stay inside budget |
+| At defaults (pigment 45, relief 25): mean gap, ten fields | 2.1–7.8 (worst 8.4–17.6) | — |
+| Export vs preview after a real Save PNG press | 1.1–3.1 mean over ~30 000 px | 8 |
+| Export ink contrast survives the resolution change | 1.00 | > 0.9 |
+| Nothing repaints between press and file (before / after) | 0.0 / 0.0 | 1.0 |
+| Ink canvas alone, preview size vs export size | 0.7–1.0 per px, ≤ 0.3 % large | 3 |
+
+The negative pass is not decorative: the mesh row rendered at pigment 100 / relief 100 is
+*judged* as the shipped 45 / 25 and does report `over 8.94 %` of pixels overspending, and
+that row FAILS the gate if it ever passes clean.
+
+**Field ink is mostly lightness.** At pigment 100 / relief 0 on a black ink the field
+replaces the ink colour completely and the strokes still read black — read directly: ink
+canvas `0,0,0` alpha 255 where the mask alpha is 255, while the main canvas paints ground
+white at the same pixel. A colour with no lightness gives a hue nowhere to show. Relief is
+the dial that reveals a field in dark ink, and the sweep above is the evidence.
+
+**The file gets the ink too.** Measured through the button a person presses, at the export's
+own resolution: `1920x1920 from 888x888 d1.7 (ink 1.9 / ground 1.4) surv 1.00 settle 0.0/0.0`,
+with the ink layer compared on its own at `d0.7 big 0.3 % at 397,790 (dist 194)` — that
+residual is one field sampled at two resolutions, not a compositing difference; shape and
+contrast both survive. Capture needs a real `Blob` out of the stubbed `toBlob`: the app's own
+export path rejects a fake one and never reaches the file name, which is how the file-name
+check looked broken while the app was fine.
+
+**Ink share keys:** `ik` (solid \| a field key), `ikf` field, `iksp` speed, `iksz` size,
+`ikc` pigment, `ikr` relief — e.g. `#ik=veil&ikc=45&ikr=25`. A field name that does not exist
+is resolved through `keyFor` inside `onChange`, so the picker, the render and the exported
+file name agree: measured `…_ikmesh_k45r25_…` even when state is handed `not_a_field`.
+Without that resolution the same picture exported under two names depending on which control
+last moved.
+
+**Ink defaults:** field off (solid ink), `mesh` when a field is asked for, speed 1, size 1,
+pigment 45, relief 25. Ink stays solid by default on purpose: the ground is the loud one, and
+the shipped default for ink is the smallest change that still shows what the dial does.
+
 ## Key files
 - `src/engine.js` — frozen-geometry engine (24 connection sets, circuits, arcs,
   sampleArc polylines, renderTiling, fitTransform, PALETTES, tilings:
@@ -124,7 +306,35 @@ holes inside tiles, "broken lens" segments, pattern bleeding off canvas edge.
   now zooms to the wing-bounded box (tile content looks smaller). Consider
   padding/zoom tuning for previews: maybe previews look "wrong" simply due to
   framing, not shapes!!  <-- ALSO CHECK THIS: compare old vs new preview scale.
-- `src/style.css`, `index.html`, `build.js`, `dist/truchet.html` (~113 KB).
+- `src/style.css`, `index.html`, `build.js`, `dist/truchet.html` (~173 KB).
+- `src/shaders.js` - the fields. Ten field bodies over one shared preamble, each a
+  function `vec3 field(vec2 p, float t)`; two thin programs wrap the same bodies for the
+  two jobs: `GROUND_MAIN` (`gl_FragColor = vec4(finish(col), 1.0)`, opaque, no mask) and
+  `INK_MAIN` (samples `u_mask` with the `y` flip, keeps coverage where alpha > 0, anchors the
+  ink's lightness, moves it away from the ground by at most `u_mix × u_relief × own gap`, and
+  writes `vec4(col * coverage, coverage)`). `frameUV()` is what keeps a field global. Reads
+  the palette as `u_a` (ink end) and `u_b` (ground end) plus `u_mix`, `u_scrim`, and for ink
+  also `u_relief`, `u_speed`, `u_scale`, `u_mask`. `createGround(canvas, role)` takes
+  `'ground'` or `'ink'`. `window.TruchetShaders` exports `createGround`, `keyFor`, `list` and
+  `hexToRGB` - and nothing else, because a probe that reaches into the private field table
+  finds holes a plain user could never cause, and those are not worth reporting as failures.
+- `dev/_groundprobe.js` (the probe the gate runs: measures coverage, luminance, spread,
+  determinism, motion, loop seam, fold, scrim, distance from the ink, the export, and the
+  ink-coloured ground that the shipped fields are *not*) and `dev/_groundqa.py` (the gate:
+  drives the real page, reopens the picture from the share link the first run wrote, then
+  runs the probe a third time against a ground given the ink's own colour). All three
+  runs have to come out right for the gate to pass.
+  `dev/_groundshots.py` screenshots the fields through the app UI; `dev/shadertest.html`
+  and `dev/_fold.html` are for eyes, not for gates; `dev/_defaults.py` is the palette/scrim
+  sweep behind the opening defaults.
+- `dev/_inkfieldprobe.js` and `dev/_inkfieldqa.py` - the ink field measurement and its gate.
+  The probe compares, all at the same animation phase, three coverages (solid ink, the app's
+  own mask, the field's output alpha), the lightness budget per pixel, camouflage against the
+  layer actually underneath the ink, the pigment-0 anchor, and the export (preview before the
+  press, file after, and the export-size ink layer on its own). It also restores every control
+  it moved: a probe that leaves `Ink = field` behind reports the *probe's* leftovers as the
+  app's own behaviour, which is exactly what a file-name check once appeared to find.
+  `dev/_inkshots.py` frames an ink field at one parked instant for the eyes.
 - `src/photo.js` (Photo tab) and `src/fill.js` (Fill tab) - both register
   themselves through `app.registerTab`, both build pictures with
   `TR.fillTiling`, and both keep their own state object (`P` / `F`) that never
@@ -151,9 +361,10 @@ the gates** - `dev/_inkqa.py` and `dev/_tilesqa.py` load them) and
 `dev/tiletest.html` (a manual tile-pair probe no gate uses),
 `dev/_resspike.js` (read by `dev/_ressqa.py`, which injects it as a script), and
 the gates `dev/_inkqa.py`, `dev/_tilesqa.py`, `dev/_appqa.py`, `dev/_fillqa.py`,
-`dev/_photoqa.py`, `dev/_ressqa.py`. A gate writes its own scratch pages -
-`dev/_fillpage.html`, `dev/_fillshare.html`, `dev/_photopage.html`,
-`dev/_resspike.html` - and those are generated and gitignored, not hand-kept.
+`dev/_photoqa.py`, `dev/_ressqa.py`, `dev/_groundqa.py`. A gate writes its own scratch
+pages - `dev/_fillpage.html`, `dev/_fillshare.html`, `dev/_photopage.html`,
+`dev/_resspike.html`, `dev/_groundpage.html` - and those are generated and gitignored,
+not hand-kept.
 `dev/bench.html` was dropped.
 
 Deleted as scratch during cleanup (all reproducible, none needed to build or
@@ -204,18 +415,26 @@ produce screenshots that are identical pixel for pixel (0 differing values out o
 4,830,000 at 1400x1150); the picker gate run on the deployed screenshot reads 0
 mismatches; and the Fill tab renders there rather than showing an empty stage.
 
-**Line endings, read this before believing dist is stale.** `core.autocrlf=true`
-rewrites the working tree to CRLF while the blobs are stored LF, so `dist/truchet.html`
-measures 122,311 bytes on disk (2,764 CRs) and 119,547 bytes in git and on the
-site - the difference is exactly those CRs, same content. `build.js` once matched
-a four-script block joined with `\n`, so a fresh Windows checkout made the match
-fail silently and the build aborted with "external references remain"; matching is
-tolerant now, and `.gitattributes` pins text to LF so a checkout does not depend
-on each machine's git config.
+**Line endings, read this before believing dist is stale.** `.gitattributes` pins text
+files to LF and `build.js` writes the artifact with LF, so `dist/truchet.html` on disk and
+the blob git holds for it are the same bytes. Before that pinning they were not:
+`core.autocrlf=true` handed the working tree CRLF while the blobs stayed LF, and the file
+measured 2,764 bytes larger on disk than in git - exactly one `\r` per line, same content -
+which made a check comparing disk against `git show` call a healthy build broken. A
+published build once matched a four-script block in `index.html` with a literal joined by
+`\n`, so a fresh Windows checkout made the match fail silently and the build stopped with
+"external references remain" while the shipped file was fine. Matching is tolerant now.
+
+**Not deployed yet.** The fields — under the tiles and on the ink — are built and gated
+locally; the Pages site still serves the last published build. `dist/truchet.html` is 172.5 KB
+at the moment of writing (engine + shaders + app + photo + fill inlined). Publishing is the
+user's call, not a step to assume. Before publishing, know that `dev/_ressqa.py` measured every
+frame format × long edge × tab with both field controls in place, including an ink field over a
+field ground: the export size list and the new controls have been seen together.
 
 ## Running the gates
 
-Run all six after any change to `src/`. Each exits non-zero on failure.
+Run all eight after any change to `src/`. Each exits non-zero on failure.
 
 ```bash
 node build.js                     # regenerate dist/truchet.html
@@ -226,7 +445,27 @@ python dev/_appqa.py --capture    # the 15 picker previews vs the oracle, self-s
 python dev/_fillqa.py             # Fill tab through the real app UI
 python dev/_photoqa.py            # Photo tab through the real app UI
 python dev/_ressqa.py             # every frame format x long edge x tab: no black stage
+python dev/_groundqa.py           # the fields under the tiles: opening defaults, the share
+                                  # link, Save PNG, and a negative pass whose whole job is
+                                  # to prove these gates are capable of failing
+python dev/_inkfieldqa.py         # the same fields painted onto the ink: shape preserved,
+                                  # lightness budget kept, export named and matched
+                                  # (--only=mesh measures one field)
 ```
+
+`_inkqa.py` and `_inkfieldqa.py` are different gates: the first checks the Photo tab's motif
+ink table (a motif's ink plus its inverted copy cover the cell), the second checks the fields
+painted onto ink. Both field gates loop over `TruchetShaders.list`, so a field added to
+`src/shaders.js` is gated automatically, and a field missing from it shows up as a hole in
+the output rather than as a silent pass.
+
+`_inkfieldqa.py` retries an attempt only when **no measurement reached the dump** — a canvas
+that handed out no context, or a dump taken while the probe was still working (`running...`).
+A failing measurement is not retried; it prints and fails, identically on every attempt. That
+distinction matters: the ink gate is the heaviest of the eight (18 rows, two WebGL layers, four
+1920×1920 exports), and under back-to-back Chrome instances it once reported a failure that
+three clean runs did not reproduce. Run it alone before trusting a failure — and read which
+row says why.
 
 `_tilesqa.py` captures its own DOM dump and `_appqa.py --capture` takes its own
 screenshot, so a fresh clone can run every gate with nothing installed beyond

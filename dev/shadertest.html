@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<!-- dev/shadertest.html — every ground in src/shaders.js, side by side.
+     Not a gate: it is how a new field gets looked at before it is worth putting
+     in the app. Open it, and every shader is the same frame size, the same
+     clock and the same two colours, so a difference on screen is a difference
+     in the shader rather than in its settings.
+       chrome --headless=new --window-size=1000,420 --screenshot=… dev/shadertest.html -->
+<html>
+<head><meta charset="utf-8"><style>
+  body { margin: 0; background: #14151a; color: #d8d9de;
+         font: 11px/1.3 system-ui, sans-serif; }
+  #grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 6px; }
+  figure { margin: 0; }
+  canvas { width: 100%; aspect-ratio: 16/9; display: block; border-radius: 4px; }
+  figcaption { padding: 3px 2px 0; color: #8b8d96; font-size: 10px; }
+  #out { position: fixed; right: 6px; top: 6px; max-width: 40ch; color: #ffb4b4; }
+</style></head>
+<body>
+<div id="grid"></div>
+<div id="out"></div>
+<script src="../src/shaders.js"></script>
+<script>
+'use strict';
+const SH = window.TruchetShaders;
+const grid = document.getElementById('grid');
+const out = document.getElementById('out');
+const W = 340, H = 192;                 // 16:9: a wide frame shows whether a field
+                                       // distorts or tiles when the aspect changes
+const t = Number(new URLSearchParams(location.search).get('t') || 6);
+const mix = Number(new URLSearchParams(location.search).get('mix') || 0);
+for (const s of SH.list) {
+  const fig = document.createElement('figure');
+  const c = document.createElement('canvas');
+  const cap = document.createElement('figcaption');
+  cap.textContent = s.key + ' — ' + s.label;
+  fig.appendChild(c); fig.appendChild(cap); grid.appendChild(fig);
+  const g = SH.createGround(c);
+  if (!g.ok) { out.textContent += s.key + ': ' + g.reason + '\n'; continue; }
+  g.resize(W, H);
+  g.setShader(s.key);
+  g.setParams({
+    scale: 1, mix: mix, seed: 0.37,
+    a: SH.hexToRGB('#101018'), b: SH.hexToRGB('#f4efe6')
+  });
+  g.render(t);
+  const err = g.setShader(s.key);       // a compile failure is a string, not true
+  if (err !== true) out.textContent += s.key + ': ' + err.error + '\n';
+}
+</script>
+</body>
+</html>

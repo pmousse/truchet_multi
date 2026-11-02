@@ -7,7 +7,13 @@
 <link rel="stylesheet" href="src/style.css">
 </head>
 <body>
-<div id="stage"><canvas id="mainCanvas"></canvas></div>
+<div id="stage">
+  <div id="frame">
+    <canvas id="groundCanvas"></canvas>
+    <canvas id="mainCanvas"></canvas>
+    <canvas id="inkCanvas"></canvas>
+  </div>
+</div>
 <button id="showBtn">☰ Truchet Studio</button>
 <button id="hideBtn">☰ hide</button>
 <div id="err"></div>
@@ -158,6 +164,41 @@
       <label>max depth</label><input type="color" id="inC2">
       <label>ground</label><input type="color" id="inBg">
     </div>
+    <div class="row"><select id="selGround">
+      <option value="solid">solid ground colour</option>
+      <option value="shader">animated shader ground&hellip;</option>
+    </select></div>
+    <div class="row" id="rowShader"><select id="selShader"></select></div>
+    <div class="row wrap" id="rowShade">
+      <label>speed</label>
+      <input type="number" id="inShSpeed" min="0" max="4" step="0.1" inputmode="decimal">
+      <label>scale</label>
+      <input type="number" id="inShScale" min="0.25" max="4" step="0.25" inputmode="decimal">
+      <label>palette %</label>
+      <input type="number" id="inShMix" min="0" max="100" step="5" inputmode="numeric">
+      <label>scrim %</label>
+      <input type="number" id="inScrim" min="0" max="90" step="5" inputmode="numeric">
+    </div>
+    <div class="row"><span id="groundInfo" class="info"></span></div>
+    <div class="row"><span class="hint">the shader paints the frame as one field &mdash; it is never tiled, never sampled per cell &mdash; and the tiles&rsquo; light colour class turns transparent so that field reads through the ink. speed / scale / palette % shape the field, scrim dims it under the pattern for legibility. an export takes the frame you are looking at.</span></div>
+
+    <div class="row"><select id="selInk">
+      <option value="solid">solid ink colour</option>
+      <option value="shader">animated shader ink&hellip;</option>
+    </select></div>
+    <div class="row" id="rowInkShader"><select id="selInkShader"></select></div>
+    <div class="row wrap" id="rowInkShade">
+      <label>speed</label>
+      <input type="number" id="inInkSpeed" min="0" max="4" step="0.1" inputmode="decimal">
+      <label>scale</label>
+      <input type="number" id="inInkScale" min="0.25" max="4" step="0.25" inputmode="decimal">
+      <label>pigment %</label>
+      <input type="number" id="inInkPig" min="0" max="100" step="5" inputmode="numeric">
+      <label>relief %</label>
+      <input type="number" id="inInkRelief" min="0" max="100" step="5" inputmode="numeric">
+    </div>
+    <div class="row"><span id="inkInfo" class="info"></span></div>
+    <div class="row"><span class="hint">ink painted by a field uses the same ten fields: the tiles are still drawn exactly as the lattice rules decide &mdash; same arcs, same wings, same break rules, same colour class per depth &mdash; and only the colour of that drawing is replaced by the field&rsquo;s hue. each stroke keeps the lightness its palette gave it, which is what the pattern is read from; relief % is how far the field may deepen a stroke away from the ground where the field is at its brightest &mdash; away, never toward, so a field can deepen the ink but cannot bury it &mdash; and pigment % is how much of the ink&rsquo;s own colour the hue may replace. ink speed and scale run on their own clock, independent of the ground.</span></div>
 
     <div class="sect" id="outSect">Output</div>
     <div class="row" id="rowRes"><label id="lblRes">long edge</label>
@@ -186,6 +227,7 @@
 </aside>
 
 <script src="src/engine.js"></script>
+<script src="src/shaders.js"></script>
 <script src="src/app.js"></script>
 <script src="src/photo.js"></script>
 <script src="src/fill.js"></script>

@@ -6,6 +6,12 @@ tmp/
 dev/browse/
 
 dev/truchet_*.png
+dev/_groundpage.html
+dev/_defaultspage.html
+dev/_groundshot.html
+dev/_shot_raw_*.png
+dev/_inkfieldpage.html
+dev/_inkshot.html
 dev/_photopage.html
 dev/_fillpage.html
 dev/_fillshare.html
