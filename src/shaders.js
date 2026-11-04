@@ -205,7 +205,7 @@ vec3 finish(vec3 c) {
   const SHADERS = [
     {
       key: 'mesh',
-      label: 'mesh gradient — soft airbrushed colour field (like shader.jpg)',
+      label: 'mesh gradient — soft airbrushed colour field',
       loop: 90,
       src: `
 /* Six colour sources on circular paths, each contributing a Gaussian weight,

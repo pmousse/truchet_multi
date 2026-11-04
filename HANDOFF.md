@@ -120,8 +120,9 @@ holes inside tiles, "broken lens" segments, pattern bleeding off canvas edge.
 The `bg` colour became a choice: a colour, or one of ten animated fields
 (`src/shaders.js`, plain WebGL, no library). The requirement came from the picture, not
 from the technology: a field had to behave as one field across the whole frame, not as a
-pattern repeated inside every cell. The look the user asked for is `shader.jpg`, kept at
-the repo root - their reference image, untracked and not published.
+pattern repeated inside every cell. The look the user asked for was a soft airbrushed mesh
+gradient, described in words and kept outside the repo as a reference picture; the field is
+built from that description, not from a file the app depends on.
 
 **A frame, not a tiled ground.** The field is its own `<canvas>` under the tile canvas,
 rendered once across the frame at the same pixel size, and `buildPalette()` makes the
