@@ -480,12 +480,21 @@ const Truchet = (function () {
     }
   }
 
+  /* How far a tile's ink reaches beyond its square, measured in units of THAT
+   * tile: the quarter-circle wings stick out exactly s/3 (a wing's centre sits
+   * on the edge midpoint and bulges a radius s/2, so its far crossing is
+   * s/2 - s/6 = s/3), plus 2% slack so an antialiased wing is never culled right
+   * at a boundary. It is a property of a cell, not of the frame, so a lattice
+   * unit may lose this much overhang before anything drawn is lost - which is
+   * the number src/app.js weighs when it picks the lattice a frame starts on. */
+  const WING_MARGIN = 1 / 3 + 0.02;
+
   function renderTiling(ctx, tiles, opts) {
     const { pickTile, palette, bounds } = opts;
     const order = tiles.slice().sort((a, b) => tileDepth(a) - tileDepth(b)); // big first
     for (const t of order) {
       if (bounds) {
-        const m = t.s / 3 + t.s * 0.02; // wings reach exactly s/3
+        const m = t.s * WING_MARGIN;    // wings reach exactly s/3
         if (t.x + t.s + m < bounds[0] || t.x - m > bounds[2] ||
           t.y + t.s + m < bounds[1] || t.y - m > bounds[3]) continue;
       }
@@ -508,7 +517,7 @@ const Truchet = (function () {
   function fitTransform(ctx, tiles, w, h, padding = 0) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const t of tiles) {
-      const m = t.s / 3 + t.s * 0.02; // wings reach exactly s/3 beyond the tile square
+      const m = t.s * WING_MARGIN;      // wings reach exactly s/3 beyond the tile square
       minX = Math.min(minX, t.x - m); minY = Math.min(minY, t.y - m);
       maxX = Math.max(maxX, t.x + t.s + m); maxY = Math.max(maxY, t.y + t.s + m);
     }
@@ -544,7 +553,7 @@ const Truchet = (function () {
     tileDepth,
     randomSubdivision, gridTiling, checkerboardTiling, surroundTiling,
     offsetSurroundTiling, fillTiling,
-    renderTiling, fitTransform, PALETTES, lerpColor
+    renderTiling, fitTransform, PALETTES, lerpColor, WING_MARGIN
   };
 })();
 if (typeof module !== 'undefined') module.exports = Truchet;

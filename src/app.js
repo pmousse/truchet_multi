@@ -123,11 +123,17 @@
    * a rectangular lattice of square tiles covering it completely, rather than
    * Carlson's CropSquareTiling cutting a non-square window out of a square.
    * Square tiles can only cover a rectangle whose ratio is rational, so the
-   * frame ratio is reduced to p:q and the lattice is (p*t) by (q*t). */
+   * frame ratio is reduced to p:q and the lattice is (p*t) by (q*t).  A coarser
+   * lattice may stand in for p x q when the frame is wide enough that its own
+   * grid would make every tile tiny - see latticeBase. */
+  /* Pairs are kept reduced to lowest terms, because a coprime p x q IS the
+   * coarsest square lattice that covers the frame exactly. 21:9 is 7:3: left as
+   * 21 x 9 it meant a grid three times finer than the frame can carry, tiles
+   * three times smaller, and two thirds of the density steps cut off. */
   const FRAME_FORMATS = {
     '1:1': [1, 1],
     '16:9': [16, 9], '9:16': [9, 16],
-    '21:9': [21, 9],
+    '21:9': [7, 3],
     '4:3': [4, 3], '3:4': [3, 4],
     '3:2': [3, 2], '2:3': [2, 3],
     '5:4': [5, 4], '4:5': [4, 5],
@@ -146,6 +152,9 @@
    * tile is still ~64 px at 2048 px, i.e. a motif rather than noise). The tile
    * cap above is what actually binds for wide frames. */
   const MAX_DENSITY_STEP = 32;
+  /* How coarse the density-1 lattice is allowed to be, counted in cells across
+   * the frame's SHORT edge. See latticeBase. */
+  const LATTICE_SHORT_MAX = 4;
 
   const HASH_KEYS = {
     tiling: 't', n: 'n', splits: 'sp',
@@ -202,6 +211,23 @@
     while (b) { const t = b; b = a % b; a = t; }
     return a || 1;
   }
+  /* Continued-fraction convergents of w:h — the integer ratios that approximate
+   * it best at each size, running coarsest ([1,1]) to exact, every one already
+   * in lowest terms. A square lattice can only lie on a rational ratio, and a
+   * convergent is the coarsest grid that still lands near it, which is exactly
+   * what a frame needs when its own p x q is finer than the picture wants. */
+  function convergents(w, h) {
+    const out = [];
+    let a = w, b = h, hh0 = 0, hh1 = 1, kk0 = 1, kk1 = 0;
+    for (let it = 0; it < 40 && b > 1e-9; it++) {
+      const ai = Math.floor(a / b);
+      const hh2 = ai * hh1 + hh0, kk2 = ai * kk1 + kk0;
+      out.push([hh2, kk2]);
+      hh0 = hh1; hh1 = hh2; kk0 = kk1; kk1 = kk2;
+      const r = a - ai * b; a = b; b = r;
+    }
+    return out;
+  }
   /* Reduce w:h to integer p:q; if that needs sides bigger than 'limit', fall
    * back to the best continued-fraction convergent within the limit. */
   function reduceRatio(w, h, limit) {
@@ -209,14 +235,10 @@
     if (Number.isInteger(p0) && Number.isInteger(q0) && Math.max(p0, q0) <= limit) {
       return [p0, q0];
     }
-    let a = w, b = h, hh0 = 0, hh1 = 1, kk0 = 1, kk1 = 0, best = [1, 1];
-    for (let it = 0; it < 40 && b > 1e-9; it++) {
-      const ai = Math.floor(a / b);
-      const hh2 = ai * hh1 + hh0, kk2 = ai * kk1 + kk0;
-      if (Math.max(hh2, kk2) > limit) break;
-      best = [hh2, kk2];
-      hh0 = hh1; hh1 = hh2; kk0 = kk1; kk1 = kk2;
-      const r = a - ai * b; a = b; b = r;
+    let best = [1, 1];
+    for (const [c, r] of convergents(w, h)) {
+      if (Math.max(c, r) > limit) break;      // convergents only ever grow
+      best = [c, r];
     }
     return best;
   }
@@ -240,6 +262,81 @@
     }
     return FRAME_FORMATS[S.format] || [1, 1];
   }
+  /* The lattice density 1 stands on, which for a wide frame is NOT its own p x q.
+   *
+   * Square tiles can only cover a p:q frame in multiples of p x q, so the frame's
+   * reduced grid is the FINEST lattice that fits it exactly — and on a wide frame
+   * that grid is far finer than the picture someone means when they ask for the
+   * coarsest setting. 16:9 at density 1 used to open on 16 x 9 = 144 cells: a
+   * tile 1/9 of the short edge, against a 1:1 frame whose single tile is the
+   * whole frame. The same number meant pictures that were never comparable.
+   *
+   * So a frame starts on the finest convergent of its ratio that stays under
+   * LATTICE_SHORT_MAX cells across the short edge. The ratio residue that costs
+   * is absorbed by cover fit, and a candidate is only allowed while the frame's
+   * window still contains the whole lattice rectangle — the cut may only take
+   * arc-wing overhang (WING_MARGIN of a lattice unit per side, engine.js) and
+   * never a tile square. 16:9 lands on 7 x 4: 1.6% off the ratio, cover fit
+   * trims 0.37 of a cell in all when 2.87 cells' worth of wing sticks out, the
+   * tiles are four times bigger, and there are nine density steps instead of
+   * four.
+   *
+   * The frame's exact grid is always within the cap for every preset, so a
+   * frame whose short edge is already coarse enough — 1:1, 4:3, 5:4, 3:2, 2:1,
+   * 7:3 — is untouched. A custom ratio so strange that even its coarsest safe
+   * convergent is over the cap keeps its exact grid rather than distorting the
+   * frame further.
+   *
+   * What the coarse grid costs is a fraction of the frame's ratio, so it is
+   * paid on the SHORT edge only: latticeAt re-derives the long edge at every
+   * density instead of scaling both edges together, which is what holds that
+   * fraction under half a cell however fine the lattice gets. */
+  function latticeBase() {
+    const [p, q] = frameRatio();
+    const arF = p / q, W = T.WING_MARGIN;
+    /* Cover fit scales the lattice bounds (the lattice rect plus each side's
+     * wing overhang) up to the frame and centres the window on them. Whichever
+     * axis binds is whole by construction; the other is short by
+     * |cols - rows*arF| lattice units, and the slack it can lose is the wing
+     * overhang of the binding axis — 2*W on a short-axis cut, 2*arF*W converted
+     * across when the wide axis is the one that binds. Past that the window
+     * stops containing a tile square and the crop starts eating the tiling. */
+    let best = null;
+    for (const [c, r] of convergents(p, q)) {
+      if (Math.min(c, r) > LATTICE_SHORT_MAX) break;     // convergents only grow
+      const deficit = c - arF * r;          // +: lattice too wide, -: too tall
+      if (deficit > 2 * arF * W + 1e-9) continue;
+      if (-deficit > 2 * W + 1e-9) continue;
+      if (!best || c * r > best[0] * best[1]) best = [c, r];
+    }
+    return best || [p, q];
+  }
+  /* The base lattice at density step t: the SHORT edge scales by t, the long
+   * edge is re-derived from the frame's ratio and rounded to whole cells.
+   *
+   * Scaling both edges (p*t x q*t) keeps a lattice similar to its frame, which
+   * is exact for the frame's own grid and wrong for a coarse stand-in: the
+   * ratio error is then a fraction of the lattice, so it grows with density
+   * until it is the size of a cell — 16:9 on 7 x 4 is 1.6% off at x1, which is
+   * 0.11 of a cell, and 1.6 cells at x9. Cover fit can absorb the wing overhang
+   * (2 * WING_MARGIN of a lattice unit) and no more, so past about x6 that
+   * lattice began cutting through the outer row of tile squares.
+   *
+   * Rounding the long edge per step bounds that error by half a cell at every
+   * density, and it pulls the lattice back towards the frame's ratio as it gets
+   * finer: 16:9 runs 7x4 (1.6% off) -> 21x12 -> 43x24 -> 64x36, which is 16:9
+   * exactly. The coarsest setting is where the frame is bent most, and it is
+   * the setting the cut check in latticeBase is written for. */
+  function latticeAt(bc, br, t) {
+    const [p, q] = frameRatio();
+    const arF = p / q;
+    if (arF >= 1) {                       // wide frame: short edge is the rows
+      const rows = br * t;
+      return { cols: Math.max(rows, Math.round(arF * rows)), rows, t };
+    }
+    const cols = bc * t;                  // tall frame: short edge is the columns
+    return { cols, rows: Math.max(cols, Math.round(cols / arF)), t };
+  }
   function tilingFor(L) {         // tiles a given lattice actually emits
     switch (S.tiling) {
       case 'chk': return T.checkerboardTiling(L.cols, L.rows);
@@ -257,39 +354,40 @@
     }
     return T.checkerboardTiling(4, 4);
   }
-  function latticeOf(p, q, t) { return { cols: p * t, rows: q * t, t }; }
   let maxTCache = { key: '', val: 1 };
   function latticeMaxT() {              // highest density step within the caps
+    const [bc, br] = latticeBase();
     const [p, q] = frameRatio();
     const randPart = (S.tiling === 'rand') ? ':' + S.splits + ':' + S.maxd : '';
-    const key = S.tiling + ':' + p + ':' + q + randPart;
+    const key = S.tiling + ':' + bc + ':' + br + ':' + p + ':' + q + randPart;
     if (maxTCache.key === key) return maxTCache.val;
     /* The side cap is pure geometry. The tile cap needs this tiling's own
      * expansion factor - how many tiles one cell produces - measured on the
      * base lattice instead of assumed, then verified against the real tiling
-     * because the expansion is not exactly constant. */
-    const bySide = Math.max(1, Math.floor(MAX_LATTICE_SIDE / Math.max(p, q)));
-    const ratio = Math.max(1, tilingFor(latticeOf(p, q, 1)).length / (p * q));
+     * because the expansion is not exactly constant. The estimate is only an
+     * estimate, so the step it suggests is walked back until the lattice this
+     * frame actually gets is inside both caps. */
+    const longBase = Math.max(bc, br), shortBase = Math.min(bc, br);
+    const bySide = Math.max(1, Math.floor(MAX_LATTICE_SIDE / longBase));
+    const ratio = Math.max(1, tilingFor(latticeAt(bc, br, 1)).length / (bc * br));
     let t = Math.max(1, Math.min(MAX_DENSITY_STEP, bySide,
-      Math.floor(Math.sqrt(MAX_LATTICE_TILES / (ratio * p * q)))));
-    let count = tilingFor(latticeOf(p, q, t)).length;
-    if (count > MAX_LATTICE_TILES) {
-      t = Math.max(1, Math.floor(t * Math.sqrt(MAX_LATTICE_TILES / count)));
-      while (t > 1) {
-        count = tilingFor(latticeOf(p, q, t)).length;
-        if (count <= MAX_LATTICE_TILES) break;
-        t--;
-      }
+      Math.floor(Math.sqrt(MAX_LATTICE_TILES / (ratio * bc * br)))));
+    for (; t > 1; t--) {
+      const L = latticeAt(bc, br, t);
+      if (L.cols > MAX_LATTICE_SIDE || L.rows > MAX_LATTICE_SIDE) continue;
+      if (tilingFor(L).length <= MAX_LATTICE_TILES) break;
     }
-    maxTCache = { key, val: t };
-    return t;
+    maxTCache = { key, val: Math.max(1, t) };
+    return Math.max(1, t);
   }
   function lattice() {                 // tiling units: cols x rows covering the frame
-    const [p, q] = frameRatio();
-    /* Square tiles only tile a p:q rectangle in multiples of (p, q), so the
-     * control is that multiplier itself — every step of it changes the grid. */
+    /* Square tiles only tile a frame's rectangle in multiples of its own grid
+     * (or of the coarser lattice standing in for it, see latticeBase), so the
+     * density control is that multiplier - and the long edge is re-derived at
+     * each step, see latticeAt. */
+    const [bc, br] = latticeBase();
     const t = clamp(Math.round(S.n) || 1, 1, latticeMaxT());
-    return { cols: p * t, rows: q * t, t };
+    return latticeAt(bc, br, t);
   }
 
   /* ================= tiling + pickTile ================= */
@@ -621,7 +719,7 @@
   function worldBounds(tiles) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const t of tiles) {
-      const m = t.s / 3 + t.s * 0.02;   // wings reach exactly s/3 (as in fitTransform)
+      const m = t.s * T.WING_MARGIN;   // wings reach exactly s/3 (as in fitTransform)
       x0 = Math.min(x0, t.x - m); y0 = Math.min(y0, t.y - m);
       x1 = Math.max(x1, t.x + t.s + m); y1 = Math.max(y1, t.y + t.s + m);
     }
@@ -650,9 +748,12 @@
      * same ground once instead of an overlay applied through whichever path
      * happened to draw the frame. */
     if (!tiles.length) return;   // ground only; there is nothing to fit
-    /* The lattice already carries the frame's ratio, so this scales with no
-     * clipping in the normal case; 'cover' only matters when an odd custom
-     * size had to be approximated by the nearest lattice (sub-1% sliver). */
+    /* Cover fit: the bounds are scaled to cover the frame and the excess is
+     * trimmed evenly off both sides. Those bounds are the tile rect plus the arc
+     * wings that hang off its edges, so the window is always wider and taller
+     * than the lattice itself and the trim can only ever reach that wing
+     * overhang - no square of the grid is cut, whatever lattice the frame
+     * stands on. */
     const [x0, y0, x1, y1] = (tabDef().viewBounds || worldBounds)(tiles);
     const bw = x1 - x0, bh = y1 - y0;
     /* Degenerate bounds would flow into s = -0 and then into setTransform, and a
@@ -988,8 +1089,9 @@
   /* base lattice for the Photo tab: same lattice the Generator uses, clamped to
    * what the frame can carry before the quadtree even starts subdividing */
   function baseScale() {
+    const [bc, br] = latticeBase();
     const maxT = Math.max(1, Math.min(latticeMaxT(), Math.floor(
-      Math.sqrt(MAX_LATTICE_TILES / (frameRatio()[0] * frameRatio()[1])))));
+      Math.sqrt(MAX_LATTICE_TILES / (bc * br)))));
     const v = clamp(Math.round(S.n) || 1, 1, maxT);
     return { value: v, max: maxT };
   }
@@ -1106,7 +1208,7 @@
                                      // ships, not carry a copy of its own
     hashGet,                       // one raw ask from the link, for a tab's own keys
     state: () => S,
-    frameRatio, framePx, lattice, latticeMaxT,
+    frameRatio, framePx, lattice, latticeMaxT, latticeBase,
     maxLatticeTiles: () => MAX_LATTICE_TILES,
     motifPool,
     buildTiling: buildTiling,           // dev harnesses: the tab shell's tiling path

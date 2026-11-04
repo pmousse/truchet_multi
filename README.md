@@ -70,6 +70,24 @@ lattice they were meant to have instead of a square pattern cut down to size.
 Nothing is cropped and nothing is letterboxed, and the export is the same
 lattice you see on screen drawn at the full size you chose.
 
+Wide frames are the hard case, because square tiles only tile a p:q rectangle in
+multiples of p x q: 16:9 reduced to coprime 16x9 is 144 cells across the frame at
+its coarsest setting, a tile 11% of the short edge where a 1:1 frame's single
+tile is the whole frame. So a frame may stand on a coarser lattice than its own
+grid — the coarsest continued-fraction lattice of its ratio with no more than 4
+cells on the short edge, which for 16:9 is 7 x 4: a tile 23% of the short edge,
+1.6% off 16:9. Cover fit trims that difference, and the trim may only reach the
+arc wings that hang off the edge of the lattice — the bounds the renderer culls
+with are the lattice rect plus that overhang on every side, so the window it looks
+through is always wider and taller than the lattice and no square of the grid is
+ever cut. Keeping that true is why the long edge is re-derived from the frame's
+ratio at every density rather than scaled with the short one (16:9 runs 7x4 ->
+43x24 -> 64x36, exact at the top): scaling both edges lets a coarse lattice's
+ratio error grow with density until it eats a whole cell, which is how 16:9 came
+to cut through its outer tiles from density 7 upward. Density is a multiplier on
+the short edge and a cap on the tile count and the side length, so its top is
+whatever this picture can hold rather than a fixed number.
+
 The saved file is named from what made it — tiling, lattice, seed, motifs and
 palette — rather than carrying a watermark over your picture.
 
@@ -101,6 +119,7 @@ python dev/_appqa.py       the 15 motif previews vs the model
 python dev/_fillqa.py      the Fill tab, driven through the real UI
 python dev/_photoqa.py     the Photo tab, driven through the real UI
 python dev/_ressqa.py      every frame format x every long edge x every tab
+python dev/_latticeqa.py   the lattice each frame stands on, and what the frame does to it
 ```
 
 `HANDOFF.md` is the working log: what was measured, what was wrong, what was

@@ -292,6 +292,78 @@ last moved.
 pigment 45, relief 25. Ink stays solid by default on purpose: the ground is the loud one, and
 the shipped default for ink is the smallest change that still shows what the dial does.
 
+## The lattice a frame stands on
+
+Reported by the user: choosing desktop 16:9 at density 1 gives tiles far smaller
+than 1:1 at density 1. Measured on the live page before the fix: a 16:9 frame's
+density-1 cell was 6.3% of its short edge, against 59% for a 1:1 frame's. The
+cause is arithmetic, not the fit - the lattice was the frame's ratio reduced to
+coprimes (16 x 9) and density scaled that grid, so the coarsest 16:9 picture is
+144 cells across, and square tiles only tile a p:q rectangle in multiples of
+p x q. Wide frames cannot start coarse on their own grid, because "coarse" means
+fewer than one whole grid.
+
+Two changes, both in `src/app.js`:
+
+**`latticeBase()`** lets a frame stand on a coarser continued-fraction lattice
+than its own grid - the coarsest convergent of its ratio with at most
+`LATTICE_SHORT_MAX` (4) cells on the short edge, and only while its ratio deficit
+is small enough for cover fit to absorb (2 x `WING_MARGIN` of a lattice unit).
+16:9 lands on 7 x 4: a cell 23% of the short edge, 1.6% off 16:9. Frames whose
+grid is already coarse enough - 1:1, 4:3, 5:4, 3:2, 2:1, and 21:9, which was
+stored as 21x9 unreduced and is now 7x3 - keep their exact grid, so their
+behaviour is untouched. `lattice()` calls `latticeAt` on that base, and
+`latticeMaxT()` and Photo's `baseScale()` are both measured on the base lattice
+rather than deriving limits from the exact ratio, which is what kept those caps
+wrong for a coarse lattice.
+
+**`latticeAt()`** scales the SHORT edge by the density step and re-derives the
+long edge from the frame's ratio, rounded to whole cells. The first version
+scaled both edges (p*t x q*t), which is exact for the frame's own grid and wrong
+for a coarse stand-in: its ratio error is a fraction of the lattice, so it grew
+with density - 16:9 on 7 x 4 is 1.6% off at x1, which is 0.11 of a cell, and 1.6
+cells off at x9, past the 0.71 lattice units cover fit is allowed to trim. That
+lattice was clipped from density 7 up, 9:16's from density 6 up, and the cap was
+letting both ask for x18. Rounding the long edge per step bounds the error at
+half a cell whatever the density, and pulls the lattice back towards the frame's
+ratio as it gets finer: 7x4 (1.6% off) -> 21x12 -> 43x24 -> 64x36, exact at the
+top. The coarsest setting is where the frame is bent most, and it is the setting
+the `latticeBase` cut check is written for - it is not a free pass at every
+density, which is what the first version assumed.
+
+What makes a coarse lattice legal at all: cover fit may only cut the arc wings.
+The bounds the renderer culls with are the lattice rect plus `WING_MARGIN` on
+every side, so the window it looks through is always wider and taller than the
+lattice, and the trim can only ever reach that overhang - no square of the grid is
+lost. `src/engine.js` exports `WING_MARGIN` for that check; the three places that
+had written `s/3 + s*0.02` by hand were the same number in disguise, and a fit
+check cannot be written against a sum repeated in four places.
+
+`'off'` and `'sur'` clip squares of the grid even when the frame stands on its own
+exact grid - their overhang moves the centre the window is centred on, which is
+what an offset surround *is*. The gate judges those two against the frame's own
+grid at the same density step and forbids the coarse lattice from clipping more
+than that, while the tilings that fill the lattice exactly (chk, grid, rand) are
+judged absolutely: not one square clipped, at any density.
+
+New gate `dev/_latticeqa.py` (+ `dev/_latticeprobe.js`): 120 live rows across all
+12 formats x 5 generator tilings at density 1 and at each frame's own cap, 120
+baseline rows from the frames' exact grids rebuilt in the probe from the engine,
+and custom frames. It reads cell size as a fraction of the short edge, the window
+against the lattice rect and against every tile square, the lattice against the
+caps, the presets in lowest terms, that the coarse cap leaves the already-coarse
+frames alone, that a lattice is never over half a cell off the frame's ratio, and
+that Fill and Photo stand on the Generator's lattice. It also had to be shown that
+the probe can pass its own baseline - a probe that cannot measure the exact grid
+has nothing to compare a coarse one against.
+
+Also in this pass: `latticeMaxT()` measures its cap on the base lattice rather
+than the exact grid, and its tile-cap estimate is now checked by walking the step
+back against the lattice this frame actually gets, because with the long edge
+re-derived per step the estimate is a hint and not an answer - the lattice it
+predicts and the lattice `latticeAt` builds are not the same rectangle.
+
+
 ## Key files
 - `src/engine.js` — frozen-geometry engine (24 connection sets, circuits, arcs,
   sampleArc polylines, renderTiling, fitTransform, PALETTES, tilings:
@@ -434,7 +506,7 @@ field ground: the export size list and the new controls have been seen together.
 
 ## Running the gates
 
-Run all eight after any change to `src/`. Each exits non-zero on failure.
+Run all nine after any change to `src/`. Each exits non-zero on failure.
 
 ```bash
 node build.js                     # regenerate dist/truchet.html
@@ -445,6 +517,10 @@ python dev/_appqa.py --capture    # the 15 picker previews vs the oracle, self-s
 python dev/_fillqa.py             # Fill tab through the real app UI
 python dev/_photoqa.py            # Photo tab through the real app UI
 python dev/_ressqa.py             # every frame format x long edge x tab: no black stage
+python dev/_latticeqa.py          # the lattice each frame stands on: cell size against the
+                                  # short edge, the cover-fit window against the lattice rect
+                                  # and against every tile square, at every density, against
+                                  # each frame's own exact grid as the baseline
 python dev/_groundqa.py           # the fields under the tiles: opening defaults, the share
                                   # link, Save PNG, and a negative pass whose whole job is
                                   # to prove these gates are capable of failing
@@ -462,7 +538,7 @@ the output rather than as a silent pass.
 `_inkfieldqa.py` retries an attempt only when **no measurement reached the dump** — a canvas
 that handed out no context, or a dump taken while the probe was still working (`running...`).
 A failing measurement is not retried; it prints and fails, identically on every attempt. That
-distinction matters: the ink gate is the heaviest of the eight (18 rows, two WebGL layers, four
+distinction matters: the ink gate is the heaviest of them (18 rows, two WebGL layers, four
 1920×1920 exports), and under back-to-back Chrome instances it once reported a failure that
 three clean runs did not reproduce. Run it alone before trusting a failure — and read which
 row says why.
