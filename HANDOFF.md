@@ -365,6 +365,90 @@ re-derived per step the estimate is a hint and not an answer - the lattice it
 predicts and the lattice `latticeAt` builds are not the same rectangle.
 
 
+## The shape a field paints
+
+A field could only ever see the frame: every field is written in `frameUV()`, so a
+Fill frame's ground washed over the whole rectangle and ignored the shape the
+tiling was filling. The ask was for a field that lights up *along the outline* the
+Fill tab drew.
+
+**The distance is measured once, in the CPU.** `src/fill.js` runs a two-pass
+chamfer transform over the mask grid (`ensureEdges`) and packs two channels into
+one image on the mask it already had: **r** is how covered a point is, **g** is
+`0.5 + 0.5*d` where `d` is the signed distance to the contour, in units of one
+side of the mask grid - which is the shape's own short side, so a rim asked for at
+7% is 7% of the shape whatever the mask size and whatever the fit. Inside is
+positive, outside negative, so a ring's hole reads as outside rather than as more
+shape. `shapeImage()` hands that image over together with the lattice box it
+belongs to, so nothing downstream has to guess where the shape sits.
+
+**It is painted through the tiles' own matrix.** `fitTransform(tiles, w, h)` was
+pulled out of `drawScene` in `src/app.js` into one function that the tile pass,
+the ink mask and `paintShapeImage` all call with the same tiles and the same pixel
+size. The shape image is drawn into a canvas of the frame's size through that
+matrix, so the shader samples it exactly the way it samples the ink mask - no
+mapping uniforms, nothing in GLSL that could get the aspect, the crop or the fit
+wrong. A fit derived twice is a contour painted in the wrong place, and that is
+the bug nobody sees until the rim is off by a tile. `shapeCanvas` serves the
+preview, `shapeClock` the export at the export's own size, and one canvas per
+(target, size, tiles) is painted once per render and read by both fields.
+
+**In the shader** the shape arrives as `u_shape` on TEXTURE1 with `u_hasShape`
+telling it whether anything is there; `blankTexture()` (1x1 opaque black) stands
+for an unbound sampler so a texture that was never uploaded cannot read as
+noise. Four helpers sit in the shared preamble above every field body -
+`shapeDist()`, `shapeRim(w)`, `shapeCov()`, `shapeDepth()` - and where a tab
+asked for no shape at all, `shapeDist()` falls back to the frame's own edge,
+measured on `gl_FragCoord` rather than on `frameUV` so the scale dial cannot move
+it: a frame is a shape too, and a field should not fall over on the Generator tab
+because nobody handed it a mask. Custom masks never travel in a share link, so
+this fallback is not decoration - a shared Fill picture has to be right without
+the mask it was drawn from.
+
+**One field uses it**: `contour`, "rings that follow the shape, gathering at its
+edge" - lines of equal distance from the outline, running parallel to whatever the
+shape is, travelling inward as the clock runs, perturbed by a slow noise so they
+read as a field rather than as an antialiased stroke. On the ground the whole
+thing reads: the contour is the brightest line in the frame and the shape sits
+proud of what lies outside it. On the ink the brightness is thrown away by the
+`chroma`/`atLightness` split, as it is for every field, and what survives is the
+hue gathering at the outline - which is the only thing an ink field is ever
+allowed to do to a stroke. Both drifts (the noise around a closed circle, the hue
+by whole palette rotations) ride the loop at whole harmonics, so the loop seam
+still measures.
+
+**A packing bug the gate found.** The image packs the distance into the middle of
+an 8-bit channel, and `shapeDist()` read `g - 0.5` - which is *half* the distance.
+Everything still looked fine: the rings were simply twice as far apart, the rim
+twice as wide. The gate only noticed because the probe measures the same channel
+and the profile across a ring came out at half the depth the chamfer had written.
+A reading now doubles it back, `2.0 * (g - 0.5)`, with the packing written beside
+it. Lesson worth keeping: when two files agree on a packing, the agreement has to
+be *measured*, not assumed from the comment that describes it.
+
+**Ink off the contour is allowed, up to a rim.** A quadtree fill draws a mixed
+cell whole, so ink has always lain just outside a shape's edge - one finest-cell
+wide, plus the wings an arc tile throws out to `s/3`. What the gate holds is that
+nothing inked at an export's size lies further from the contour than that rim,
+which is what a shape delivered at the wrong size would break, and that the shape
+the export field was told about is measured in the export's own pixels.
+
+New gate `dev/_shapeqa.py` (+ `dev/_shapeprobe.js`), 33 rows: the contour of six
+shapes measured along 48 rays from the centre against the crossings the shape's
+own `test` predicts, through the same matrix, on square, wide and tall frames at
+export sizes with both the contain and the cover fit; the sign of a ring (hole
+outside, band inside); a triangle's apex above its base; the contour field read as
+ground and as ink with samples taken on the outline, deep inside the shape and
+deep outside it, so a field that follows the frame instead of the shape fails;
+the ink rim at 1920x1080; the frame-edge fallback on a tab that never asked for a
+shape (and that no leftover shape is handed to it); and a negative pass that puts
+a shape through the wrong fit and requires the measurement to notice - 403 px off.
+A ray near an edge is not comparable (the outline may be off the canvas, and the
+coverage ramps across it over a mask cell, about as much as the tolerance allows),
+so crossings are only judged where they can be reached, and the unreachable count
+is reported instead of hidden.
+
+
 ## Key files
 - `src/engine.js` — frozen-geometry engine (24 connection sets, circuits, arcs,
   sampleArc polylines, renderTiling, fitTransform, PALETTES, tilings:
@@ -408,6 +492,16 @@ predicts and the lattice `latticeAt` builds are not the same rectangle.
   it moved: a probe that leaves `Ink = field` behind reports the *probe's* leftovers as the
   app's own behaviour, which is exactly what a file-name check once appeared to find.
   `dev/_inkshots.py` frames an ink field at one parked instant for the eyes.
+- `dev/_shapeprobe.js` and `dev/_shapeqa.py` - the contour measurement and its gate.
+  The probe reads the packed shape canvas the shader samples (coverage in `r`, signed
+  distance in `g`, doubled back from the packing), finds the outline along 48 rays from
+  the shape's centre and compares it with the crossings the shape's own `test` predicts,
+  through the same `fitTransform` the tiles were drawn with; then it reads the field's
+  own pixels in three classes cut in fractions of the shape's side - on the outline, deep
+  inside, deep outside - since that is the unit the field's rim is asked in. It also
+  proves a ray measurement can fail: a shape painted through the wrong fit must show up
+  as a large offset, or the rows that pass are measuring nothing. Scratch page
+  `dev/_shapepage.html`.
 - `src/photo.js` (Photo tab) and `src/fill.js` (Fill tab) - both register
   themselves through `app.registerTab`, both build pictures with
   `TR.fillTiling`, and both keep their own state object (`P` / `F`) that never
@@ -434,10 +528,11 @@ the gates** - `dev/_inkqa.py` and `dev/_tilesqa.py` load them) and
 `dev/tiletest.html` (a manual tile-pair probe no gate uses),
 `dev/_resspike.js` (read by `dev/_ressqa.py`, which injects it as a script), and
 the gates `dev/_inkqa.py`, `dev/_tilesqa.py`, `dev/_appqa.py`, `dev/_fillqa.py`,
-`dev/_photoqa.py`, `dev/_ressqa.py`, `dev/_groundqa.py`. A gate writes its own scratch
-pages - `dev/_fillpage.html`, `dev/_fillshare.html`, `dev/_photopage.html`,
-`dev/_resspike.html`, `dev/_groundpage.html` - and those are generated and gitignored,
-not hand-kept.
+`dev/_photoqa.py`, `dev/_ressqa.py`, `dev/_latticeqa.py`, `dev/_groundqa.py`,
+`dev/_inkfieldqa.py`, `dev/_shapeqa.py`. A gate writes
+its own scratch pages - `dev/_fillpage.html`, `dev/_fillshare.html`, `dev/_photopage.html`,
+`dev/_resspike.html`, `dev/_groundpage.html`, `dev/_shapepage.html` - and those are
+generated and gitignored, not hand-kept.
 `dev/bench.html` was dropped.
 
 Deleted as scratch during cleanup (all reproducible, none needed to build or
@@ -507,7 +602,7 @@ field ground: the export size list and the new controls have been seen together.
 
 ## Running the gates
 
-Run all nine after any change to `src/`. Each exits non-zero on failure.
+Run all ten after any change to `src/`. Each exits non-zero on failure.
 
 ```bash
 node build.js                     # regenerate dist/truchet.html
@@ -528,6 +623,12 @@ python dev/_groundqa.py           # the fields under the tiles: opening defaults
 python dev/_inkfieldqa.py         # the same fields painted onto the ink: shape preserved,
                                   # lightness budget kept, export named and matched
                                   # (--only=mesh measures one field)
+python dev/_shapeqa.py            # a shape's contour where a field paints it: the outline
+                                  # measured along 48 rays against the crossings the shape
+                                  # predicts, on square/wide/tall frames at export sizes and
+                                  # both fits, its sign, the field read on the outline and
+                                  # deep inside and outside it, the ink rim an export may
+                                  # make, the frame-edge fallback, and a wrong fit caught
 ```
 
 `_inkqa.py` and `_inkfieldqa.py` are different gates: the first checks the Photo tab's motif

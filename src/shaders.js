@@ -92,6 +92,8 @@ uniform float u_relief;   /* ink only: see the ink main */
 uniform vec3  u_a;      /* the picture's light ink */
 uniform vec3  u_b;      /* the picture's ground */
 uniform sampler2D u_mask;  /* ink only: the ink itself, rgb its colour, a its coverage */
+uniform sampler2D u_shape;  /* a frame standing on a shape: r its coverage, g its distance */
+uniform float u_hasShape;   /* 0 when it is not: see shapeDist */
 
 #define TAU 6.28318530718
 
@@ -106,6 +108,57 @@ vec2 frameUV() {
   float m = min(u_res.x, u_res.y);
   return (gl_FragCoord.xy - 0.5 * u_res) / m * u_scale;
 }
+
+/* The shape's own coordinates. The shape arrives as a canvas painted through the
+ * very transform the tiles were drawn with (fitTransform in src/app.js), so it
+ * lines up with them pixel for pixel and is sampled the way the ink mask is -
+ * WebGL puts (0,0) at the bottom of the frame and a canvas is measured from the
+ * top. Because the sampling is the frame's own, nothing here can get the aspect,
+ * the crop or the fit wrong: the shape was already placed by the code that placed
+ * the tiles. */
+vec2 shapeUV() {
+  return vec2(gl_FragCoord.x / u_res.x, 1.0 - gl_FragCoord.y / u_res.y);
+}
+
+/**
+ * Distance from the shape's contour, in fractions of the shape's short side:
+ * positive inside, negative outside, 0 exactly on the outline - the unit
+ * src/fill.js measures it in, so a rim asked for at 7% is 7% of the shape at any
+ * mask size and any fit.
+ *
+ * Where the frame stands on no shape - the Generator and Photo tabs - the
+ * frame's own edge stands in, in the same unit, because a frame is a shape too
+ * and a field should not fall over when nobody asked for one. That fallback is
+ * measured on the frame's pixels rather than on frameUV so the field scale cannot
+ * move it: where the edge of the picture is geometry, and the dial that sizes the
+ * pattern has no business changing it.
+ */
+float shapeDist() {
+  /* src/fill.js packs the distance as 0.5 + 0.5*d into one 8-bit channel, so the
+   * reading has to be doubled back before it means anything. */
+  if (u_hasShape > 0.5) return 2.0 * (texture2D(u_shape, shapeUV()).g - 0.5);
+  float m = min(u_res.x, u_res.y);
+  vec2 q = (gl_FragCoord.xy - 0.5 * u_res) / m;
+  vec2 hw = 0.5 * vec2(u_res.x / m, 1.0);
+  return min(hw.x - abs(q.x), hw.y - abs(q.y));
+}
+
+/* 1 on the contour, falling to 0 w of the short side away on either side. */
+float shapeRim(float w) {
+  return 1.0 - clamp(abs(shapeDist()) / max(w, 1e-4), 0.0, 1.0);
+}
+
+/* How much of a point is inside the shape, ramping across the outline the way the
+ * tiling's own coverage does. A frame with no shape is all of it, since there is
+ * nothing there to be outside of. */
+float shapeCov() {
+  if (u_hasShape > 0.5) return clamp(texture2D(u_shape, shapeUV()).r, 0.0, 1.0);
+  return 1.0;
+}
+
+/* How far in you are, measured inward from the contour: 0 at the outline, rising
+ * toward the middle of the shape. Outside a contour it is 0, which is the point. */
+float shapeDepth() { return clamp(shapeDist(), 0.0, 1.0); }
 
 vec3 cosPal(float t) {
   return 0.5 + 0.5 * cos(TAU * (vec3(1.0) * t + vec3(0.0, 0.33, 0.67)));
@@ -434,6 +487,62 @@ vec3 field(vec2 p, float t) {
   float v = smoothstep(0.28, 0.78, n1 * 0.7 + n2 * 0.3);
   return vec3(v);
 }`
+    },
+    {
+      key: 'contour',
+      label: 'contour — rings that follow the shape, gathering at its edge',
+      loop: 45,
+      src: `
+/* The one field that is told about the geometry it is painted over: the shape's
+ * coverage and its signed distance to the contour arrive as data, measured once
+ * from the mask (see ensureEdges in src/fill.js), so the rings here are lines of
+ * equal distance from the outline. They run parallel to whatever the shape is - a
+ * heart, a uploaded scan, a ring - and travel inward as the clock runs. Finding
+ * the contour is not this field's job and costs it no derivatives: on a Fill
+ * frame the geometry is sampled, on any other frame it is the frame's own edge.
+ *
+ * On the ground the whole thing reads: the shape sits slightly proud of what is
+ * outside it, the contour is the brightest line in the frame and the rings carry
+ * that brightness inward. On the ink the brightness half is thrown away by design
+ * (chroma keeps the ratios, atLightness hands the ink its own lightness back) and
+ * what survives is the hue, which gathers at the contour and settles toward the
+ * middle - which is the only thing an ink field is ever allowed to do to a
+ * stroke. */
+vec3 field(vec2 p, float t) {
+  float d = shapeDist();
+  float cov = shapeCov();
+  float rim = shapeRim(0.07);
+  /* Even rings read as an outline drawn over the pattern rather than as a field,
+   * so the distance is perturbed by a slow noise before it is ringed. The noise
+   * drifts round a circle of its own - at the loop's rate, not half its rate, or
+   * the field would not come back to itself when the clock wraps. */
+  float n = fbm(p * 2.2 + 0.4 * vec2(cos(t), sin(t)));
+  float dn = d + 0.05 * (n - 0.5);
+  float rings = 0.5 + 0.5 * sin(dn * 42.0 - ph() * 3.0);
+
+  /* Hue: a slow drift of its own, with the field's most saturated colour spent on
+   * the contour. Both drifts ride the loop as whole palette rotations - cosPal has
+   * period 1 in its argument, so a shift of t / TAU over a loop is a shift of 1, and
+   * the field is where it started when the clock wraps. */
+  float f = p.x * 0.13 + p.y * 0.11;
+  vec3 base = boost(cosPal(f - t / TAU + u_seed * 0.6), 1.35);
+  vec3 edge = boost(cosPal(dn * 1.8 + t / TAU + u_seed * 0.8 + 0.2), 1.6);
+  vec3 c = mix(base, edge, clamp(0.30 + 0.60 * rim, 0.0, 1.0));
+
+  /* The contour is the brightest line in the frame and the shape sits proud of
+   * what is outside it, by weights big enough to read as geometry rather than as
+   * a gradient someone happened to leave in. */
+  float lit = 0.46 + 0.12 * cov + 0.34 * rim * (0.35 + 0.65 * rings)
+            + 0.05 * (n - 0.5);
+  lit += 0.045 * rings * cov * (1.0 - rim);
+  /* atLightness, the same pair of helpers the ink program runs the field through:
+   * the ratios here are the hue and the number is the brightness, and on the ink
+   * only the ratios survive - which is the point of the split. */
+  /* atLightness, the same helper the ink program runs the field through: the
+   * ratios here are the hue and the number is the brightness, and on the ink only
+   * the ratios survive - which is the point of the split. */
+  return atLightness(c, clamp(lit, 0.06, 0.94));
+}`
     }
   ];
 
@@ -539,6 +648,7 @@ void main() {
     const cache = new Map();        // one program per field per role, compiled on first use
     let entry = null, key = null;
     let mask = null, maskTex = null;
+    let shape = null, shapeTex = null, blankTex = null;
     const params = {
       scale: 1, seed: 0.31, mix: 0.45, scrim: 0.45, relief: 0,
       a: [0.10, 0.10, 0.12], b: [0.95, 0.94, 0.90]
@@ -579,6 +689,11 @@ void main() {
           scrim: inkRole ? null : gl.getUniformLocation(prog, 'u_scrim'),
           relief: inkRole ? gl.getUniformLocation(prog, 'u_relief') : null,
           mask: inkRole ? gl.getUniformLocation(prog, 'u_mask') : null,
+          /* Null for a body that never asks about the shape: the compiler throws
+           * away a sampler nothing called, and asking GL for a location it dropped
+           * is how a gate's probe ends up writing to a null uniform. */
+          shape: gl.getUniformLocation(prog, 'u_shape'),
+          hasShape: gl.getUniformLocation(prog, 'u_hasShape'),
           a: gl.getUniformLocation(prog, 'u_a'),
           b: gl.getUniformLocation(prog, 'u_b')
         }
@@ -601,8 +716,8 @@ void main() {
     function setParams(p) { Object.assign(params, p); }
 
     function resize(w, h) {
-      if (canvasEl.width !== w) { canvasEl.width = w; mask = null; }
-      if (canvasEl.height !== h) { canvasEl.height = h; mask = null; }
+      if (canvasEl.width !== w) { canvasEl.width = w; mask = null; shape = null; }
+      if (canvasEl.height !== h) { canvasEl.height = h; mask = null; shape = null; }
       gl.viewport(0, 0, canvasEl.width, canvasEl.height);
     }
 
@@ -640,6 +755,58 @@ void main() {
       return true;
     }
 
+    /* A body that asks where the contour is has to be answered even when there is
+     * no contour in the frame, so an unbound sampler is not an option: GL will
+     * bind *something* and the field will read it. A 1x1 of opaque black stands
+     * in, and u_hasShape tells the helpers not to read it at all. */
+    function blankTexture() {
+      if (!blankTex) {
+        blankTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, blankTex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+          new Uint8Array([0, 0, 0, 255]));
+      }
+      return blankTex;
+    }
+
+    /**
+     * The shape the frame stands on, as the app painted it: a 2D canvas the same
+     * size as this one, whose red channel is how covered each point is and whose
+     * green is the signed distance to the contour with 128 exactly on it. Pass
+     * null - or a tab with no shape at all - and the field falls back to the
+     * frame's own edge rather than keeping a shape from a frame it no longer has.
+     *
+     * Sized to match or refused, for the same reason the ink mask is: a shape a
+     * quarter the size of the frame is the shape painted in the wrong place, and
+     * that looks like a stylistic choice until someone compares two frames.
+     */
+    function setShape(src) {
+      if (!src || !src.width || !src.height) { shape = null; return true; }
+      if (src.width !== canvasEl.width || src.height !== canvasEl.height) {
+        return { error: `the shape image is ${src.width}x${src.height} but the ${role} canvas is `
+          + `${canvasEl.width}x${canvasEl.height}.` };
+      }
+      if (!shapeTex) {
+        shapeTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, shapeTex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        /* CLAMP again: the shape covers exactly the frame, and a wrapped shape
+         * would paste the other side of the picture into the rim. */
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      }
+      gl.bindTexture(gl.TEXTURE_2D, shapeTex);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+      shape = { w: src.width, h: src.height };
+      return true;
+    }
+
     /* phase is the app's clock in seconds and may be any size: it is folded
      * into the field's loop here, which is safe exactly because every body is
      * written as harmonics of u_time / u_loop. */
@@ -670,6 +837,14 @@ void main() {
         gl.bindTexture(gl.TEXTURE_2D, maskTex);
         gl.uniform1i(u.mask, 0);
       }
+      /* A separate unit from the ink mask: a Fill frame with field ink over a
+       * shader ground uses both in the same draw, and they are different data. */
+      if (u.shape) {
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, shape ? shapeTex : blankTexture());
+        gl.uniform1i(u.shape, 1);
+      }
+      if (u.hasShape) gl.uniform1f(u.hasShape, shape ? 1 : 0);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       return true;
     }
@@ -683,7 +858,12 @@ void main() {
        * ask which body is current: a mask that never arrived and a mask that arrived
        * at the wrong size look identical on screen. */
       get maskSize() { return mask ? [mask.w, mask.h] : null; },
-      setMask
+      setMask,
+      /* Likewise for the shape: "the field stopped following the contour" is what
+       * a shape that never arrived looks like, and what a shape that arrived at the
+       * wrong size looks like, and both are invisible on the stage. */
+      get shapeSize() { return shape ? [shape.w, shape.h] : null; },
+      setShape
     };
   }
 

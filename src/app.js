@@ -619,6 +619,9 @@
     inkCanvas.style.height = canvas.style.height;
     inkGl.resize(w, h);
     if (!paintInkMask(inkGl, inkMask, w, h, tiles)) { inkCanvas.style.display = 'none'; return false; }
+    if (!reportShape(inkGl.setShape(paintShapeImage(shapeCanvas, w, h, tiles)), 'ink')) {
+      inkFailed = true; inkCanvas.style.display = 'none'; return false;
+    }
     if (!inkGl.render(inkPhase)) { inkCanvas.style.display = 'none'; return false; }
     startGroundLoop();
     return true;
@@ -636,8 +639,70 @@
     pushInkParams(inkClockGl);
     inkClockGl.resize(w, h);
     if (!paintInkMask(inkClockGl, inkClockMask, w, h, buildTiling())) return null;
+    if (!reportShape(inkClockGl.setShape(paintShapeImage(shapeClock, w, h, buildTiling())), 'ink')) return null;
     if (!inkClockGl.render(inkPhase)) return null;
     return inkClock;
+  }
+
+  /* ================= the shape a field paints =================
+   * Only the Fill tab has a shape, but both fields can be told about one: the
+   * contour a shader lights up has to be the same contour the quadtree
+   * subdivided, and the only way to guarantee that is to paint the shape through
+   * the very transform the tiles were drawn with - fitTransform - instead of
+   * deriving a position for it a second time somewhere else. A fit computed
+   * twice is a contour painted in the wrong place, and that is exactly the kind
+   * of bug nobody notices until the rim is off by a tile.
+   *
+   * Two channels, both already computed once per mask in src/fill.js: r is how
+   * covered a point is, g is the signed distance to the contour with 128 exactly
+   * on it. The image is drawn into a canvas the size of the frame it belongs to,
+   * so the shader samples it the same way it samples the ink mask - no mapping
+   * uniforms, and nothing in the shader can get the aspect or the crop wrong.
+   *
+   * One canvas per size is painted once per render and read by both fields: the
+   * ground and the ink are told about the same shape, at the same size, from the
+   * same tiles. */
+  const shapeCanvas = document.createElement('canvas');
+  const shapeClock = document.createElement('canvas');   // the export's own size
+  let shapeLast = null;                                   // {target, w, h, tiles, out}
+
+  function paintShapeImage(target, w, h, tiles) {
+    if (shapeLast && shapeLast.target === target && shapeLast.w === w &&
+        shapeLast.h === h && shapeLast.tiles === tiles) return shapeLast.out;
+    const def = tabDef();
+    let out = null;
+    const fit = def.shapeImage ? fitTransform(tiles, w, h) : null;
+    if (fit) {
+      const sh = def.shapeImage();
+      if (sh && sh.img && sh.x1 > sh.x0 && sh.y1 > sh.y0) {
+        target.width = w; target.height = h;
+        const cx = target.getContext('2d');
+        cx.setTransform(1, 0, 0, 1, 0, 0);
+        cx.clearRect(0, 0, w, h);
+        /* Smoothing on: the distance is a chamfer transform of a 512 grid, so a
+         * resampled rim is still a smooth ramp rather than a staircase of the
+         * sampling grid showing through the field. */
+        cx.imageSmoothingEnabled = true;
+        cx.imageSmoothingQuality = 'high';
+        cx.setTransform(fit.s, 0, 0, -fit.s, -fit.s * fit.wx0, h + fit.s * fit.wy0);
+        cx.translate(sh.x0, sh.y1);        // the box's top-left, in lattice space
+        cx.scale(1, -1);                   // image row 0 is that box's top edge
+        cx.drawImage(sh.img, 0, 0, sh.x1 - sh.x0, sh.y1 - sh.y0);
+        cx.setTransform(1, 0, 0, 1, 0, 0);
+        out = target;
+      }
+    }
+    shapeLast = { target, w, h, tiles, out };
+    return out;
+  }
+
+  /* A shape that never arrived and a shape given at the wrong size look the same
+   * on screen - the field merely stops following the contour - so the mismatch
+   * says so instead of being absorbed. */
+  function reportShape(res, which) {
+    if (res === true) return true;
+    showError((which === 'ink' ? 'Ink field: ' : 'Ground field: ') + res.error);
+    return false;
   }
   /* The field's clock advances by dt * speed rather than wall-time * speed: a
    * phase accumulator means moving the speed slider changes how fast the field
@@ -675,8 +740,14 @@
   }
   /* Paint one frame of the field on its own canvas under the tile canvas.
    * Returns whether the ground is a field, so drawScene knows not to paint a
-   * flat ground rect over the canvas that is already showing one. */
-  function paintGround(w, h) {
+   * flat ground rect over the canvas that is already showing one.
+   *
+   * The tiles are asked for, not assumed: a field that lights up a shape's
+   * contour can only be told where the contour is in the same pixels the tiles
+   * were drawn into (see paintShapeImage). A ground with no tiles to be told - a
+   * tab that is not ready yet - falls back to the frame's own edge, which is a
+   * shape too. */
+  function paintGround(w, h, tiles) {
     if (!shaderOn()) {
       groundCanvas.style.display = 'none';
       /* The same animation loop drives both fields, so it only stops when
@@ -688,6 +759,7 @@
     groundCanvas.style.width = canvas.style.width;
     groundCanvas.style.height = canvas.style.height;
     groundGl.resize(w, h);
+    reportShape(groundGl.setShape(paintShapeImage(shapeCanvas, w, h, tiles)), 'ground');
     groundGl.render(groundPhase);
     startGroundLoop();
     return true;
@@ -708,6 +780,7 @@
     groundClockGl.setShader(SH.keyFor(S.shader));
     pushParams(groundClockGl);
     groundClockGl.resize(w, h);
+    reportShape(groundClockGl.setShape(paintShapeImage(shapeClock, w, h, buildTiling())), 'ground');
     groundClockGl.render(groundPhase);
     return groundClock;
   }
@@ -726,6 +799,37 @@
     const p = (S.pad / 100) * (x1 - x0);
     return [x0 - p, y0 - p, x1 + p, y1 + p];
   }
+  /**
+   * The window the tiles are drawn into, in world units: cover fit, so the
+   * bounds are scaled to cover the frame and the excess is trimmed evenly off
+   * both sides. Those bounds are the tile rect plus the arc wings that hang off
+   * its edges, so the window is always wider and taller than the lattice itself
+   * and the trim can only ever reach that wing overhang - no square of the grid
+   * is cut, whatever lattice the frame stands on.
+   *
+   * One function because three things have to land on the same pixels as the
+   * tiles - the ground field, the ink mask and the shape a field paints - and a
+   * fit derived twice is a contour painted in the wrong place. Returns null for
+   * a tab with nothing to fit and for degenerate bounds.
+   */
+  function fitTransform(tiles, w, h) {
+    if (!tiles || !tiles.length) return null;
+    const [x0, y0, x1, y1] = (tabDef().viewBounds || worldBounds)(tiles);
+    const bw = x1 - x0, bh = y1 - y0;
+    /* Degenerate bounds would flow into s = -0 and then into setTransform, and a
+     * zero-or-NaN matrix makes every later draw do nothing without an error - the
+     * silent black stage. Show it instead of hiding it. */
+    if (!(bw > 0 && bh > 0) || !Number.isFinite(bw) || !Number.isFinite(bh)) return null;
+    if (!(w > 0 && h > 0)) return null;
+    const s = Math.max(w / bw, h / bh);
+    const winW = w / s, winH = h / s;
+    return {
+      s, winW, winH,
+      wx0: (x0 + x1) / 2 - winW / 2,
+      wy0: (y0 + y1) / 2 - winH / 2
+    };
+  }
+
   /* What lies under the tiles, for one pass of drawScene:
    *   null            no field: the ground is one flat rect, as it always was
    *   'under'         a field is on the canvas below this one: paint nothing, and
@@ -748,32 +852,19 @@
      * same ground once instead of an overlay applied through whichever path
      * happened to draw the frame. */
     if (!tiles.length) return;   // ground only; there is nothing to fit
-    /* Cover fit: the bounds are scaled to cover the frame and the excess is
-     * trimmed evenly off both sides. Those bounds are the tile rect plus the arc
-     * wings that hang off its edges, so the window is always wider and taller
-     * than the lattice itself and the trim can only ever reach that wing
-     * overhang - no square of the grid is cut, whatever lattice the frame
-     * stands on. */
-    const [x0, y0, x1, y1] = (tabDef().viewBounds || worldBounds)(tiles);
-    const bw = x1 - x0, bh = y1 - y0;
-    /* Degenerate bounds would flow into s = -0 and then into setTransform, and a
-     * zero-or-NaN matrix makes every later draw do nothing without an error - the
-     * silent black stage. Show it instead of hiding it. */
-    if (!(bw > 0 && bh > 0) || !Number.isFinite(bw) || !Number.isFinite(bh)) {
+    const fit = fitTransform(tiles, w, h);
+    if (!fit) {
       showError('This tab produced no drawable geometry.');
       const info = document.getElementById('frameInfo');
       if (info) info.textContent = 'nothing to draw';
       return;
     }
     clearError();
-    const s = Math.max(w / bw, h / bh);
-    const winW = w / s, winH = h / s;
-    const wx0 = (x0 + x1) / 2 - winW / 2, wy0 = (y0 + y1) / 2 - winH / 2;
-    cx.setTransform(s, 0, 0, -s, -s * wx0, h + s * wy0);
+    cx.setTransform(fit.s, 0, 0, -fit.s, -fit.s * fit.wx0, h + fit.s * fit.wy0);
     T.renderTiling(cx, tiles, {
       pickTile: (tabDef().picker || buildPicker)(tiles),
       palette: buildPalette(tiles, pass),
-      bounds: [wx0, wy0, wx0 + winW, wy0 + winH]
+      bounds: [fit.wx0, fit.wy0, fit.wx0 + fit.winW, fit.wy0 + fit.winH]
     });
     /* Leave the context as it was found. A caller that draws a full-frame overlay
      * onto this canvas after the fact - the export compositing the ink field - would
@@ -829,7 +920,7 @@
      * that does not care what the tiling is, and a tab that is not ready yet
      * (Photo with no image chosen) still gets the ground it will have once it
      * is. The empty-stage branches below therefore keep the same ground. */
-    const field = paintGround(w, h) ? 'under' : null;
+    const field = paintGround(w, h, def.ready() ? buildTiling() : []) ? 'under' : null;
     if (!def.ready()) {
       /* Nothing to draw yet (Photo with no image chosen): paint just the
        * ground, so the stage still shows the frame and its real colour. */
@@ -1220,6 +1311,24 @@
      * it at. A gate that wants to prove the shape survived has to be able to look
      * at it, the same way it looks at buildTiling(). */
     inkParts: () => ({ gl: inkGl, mask: inkMask, clock: inkClock, clockGl: inkClockGl,
-      phase: inkPhase, failed: inkFailed })
+      phase: inkPhase, failed: inkFailed }),
+    /* The same look at the ground side, so a gate can ask what the ground was
+     * told instead of inferring it from what the stage showed. */
+    groundParts: () => ({ gl: groundGl, clock: groundClock, clockGl: groundClockGl,
+      canvas: groundCanvas, phase: groundPhase, failed: groundFailed }),
+    /* The shape the fields were told about, and the fit that placed it: a gate can
+     * only prove a contour landed where the tiling put it by asking the app for
+     * both, the way it already asks for the ink mask. */
+    shapeParts: () => ({ canvas: shapeCanvas, clock: shapeClock }),
+    /* The shape and the ink mask painted at a size the export would use, the way
+     * the export paints them. A gate can only prove a contour survives an export
+     * by asking for it at the export's size and measuring where it came out. */
+    shapeAt: (w, h) => paintShapeImage(shapeClock, w, h, buildTiling()),
+    /* inkFieldAt: render the ink once more at an exact pixel size and hand back
+     * both the field's output and the mask it sits on, which is where the tiles
+     * themselves put their ink. */
+    inkFieldAt: (w, h) => (inkFieldSnapshot(w, h)
+      ? { field: inkClock, mask: inkClockMask } : null),
+    fitTransform,
   };
 })();

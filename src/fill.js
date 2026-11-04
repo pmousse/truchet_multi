@@ -156,7 +156,7 @@
         cov[row * W + x] = hits / (SUB * SUB);
       }
     }
-    return { w: W, h: W, cov, sat: null, source: 'preset:' + key };
+    return { w: W, h: W, cov, sat: null, image: null, source: 'preset:' + key };
   }
 
   /* Summed area table of the coverage, so a cell query costs four reads. */
@@ -174,6 +174,120 @@
     }
     mask.sat = sat;
     return mask;
+  }
+
+  /* ================= the contour, for a field to paint =================
+   * A field that wants to do something along the shape's outline needs two
+   * numbers per grid cell: how covered it is, which `cov` already gives, and how
+   * far it stands from the outline, which `cov` does not. That second one is a
+   * distance transform - two chamfer sweeps, the same order of work as the summed
+   * area table - stored on the mask beside `sat`, because the mask is sampled
+   * once and every frame after that only reads it.
+   *
+   * The distance is SIGNED: positive inside, negative outside, 0 exactly on the
+   * outline. It is measured in fractions of the shape's short side rather than in
+   * grid cells, so a rim the user asked for at 8% thick is 8% of the shape at any
+   * sampling size and at any fit - and it is the same unit the no-shape fallback
+   * uses in src/shaders.js, where the frame's own edge stands in for a contour.
+   * Travel saturates at one short side: past that a cell is simply "well inside"
+   * or "well outside", which is all a field can usefully know.
+   *
+   * The sweep weights are 3 for an orthogonal neighbour and 4 for a diagonal
+   * (divided by 3 afterwards), the classic chamfer: within a few percent of the
+   * true Euclidean distance, and smooth enough to paint with. */
+  const CHAMFER_ORTH = 3, CHAMFER_DIAG = 4;
+
+  /* Distance in chamfer units from every cell to the nearest seed. Cells beyond
+   * the grid count as seeds when `beyondSeeds` is set: beyond the sampled area
+   * there is no shape, which is exactly what coverOf already assumes, so a shape
+   * that runs to the edge of its own grid is measured from that edge rather than
+   * having no boundary at all. */
+  function chamfer(w, h, isSeed, beyondSeeds) {
+    const INF = 1e18;
+    const d = new Float64Array(w * h);
+    for (let i = 0; i < d.length; i++) d[i] = isSeed(i) ? 0 : INF;
+    const at = (x, y) => (x >= 0 && x < w && y >= 0 && y < h)
+      ? d[y * w + x] : (beyondSeeds ? 0 : INF);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        d[i] = Math.min(d[i],
+          at(x - 1, y - 1) + CHAMFER_DIAG, at(x, y - 1) + CHAMFER_ORTH,
+          at(x + 1, y - 1) + CHAMFER_DIAG, at(x - 1, y) + CHAMFER_ORTH);
+      }
+    }
+    for (let y = h - 1; y >= 0; y--) {
+      for (let x = w - 1; x >= 0; x--) {
+        const i = y * w + x;
+        d[i] = Math.min(d[i],
+          at(x + 1, y + 1) + CHAMFER_DIAG, at(x, y + 1) + CHAMFER_ORTH,
+          at(x - 1, y + 1) + CHAMFER_DIAG, at(x + 1, y) + CHAMFER_ORTH);
+      }
+    }
+    return d;
+  }
+
+  /* Pack the coverage and the signed distance into one image: r is coverage,
+   * g is distance with 128 meaning "on the outline". Two channels because a
+   * field wants both, and one image because a texture is uploaded whole. */
+  function ensureEdges(mask) {
+    if (mask.image) return mask;
+    const w = mask.w, h = mask.h, cov = mask.cov;
+    const inside = new Uint8Array(w * h);
+    let anyIn = 0;
+    for (let i = 0; i < inside.length; i++) {
+      inside[i] = cov[i] >= 0.5 ? 1 : 0;
+      anyIn += inside[i];
+    }
+    const toOut = chamfer(w, h, (i) => !inside[i], true);
+    const toIn = anyIn ? chamfer(w, h, (i) => !!inside[i], false) : null;
+    /* Chamfer units per short side: the grid's short edge, times the weight of
+     * one orthogonal step. */
+    const perSide = Math.min(w, h) * CHAMFER_ORTH;
+    const dist = new Float32Array(w * h);
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const cx = c.getContext('2d');
+    const im = cx.createImageData(w, h);
+    const px = im.data;
+    for (let i = 0, p = 0; i < w * h; i++, p += 4) {
+      const sd = inside[i]
+        ? toOut[i] / perSide
+        : (toIn ? -(toIn[i] / perSide) : -1);
+      const v = clamp(sd, -1, 1);
+      dist[i] = v;
+      px[p] = Math.round(clamp(cov[i], 0, 1) * 255);
+      px[p + 1] = Math.round((0.5 + 0.5 * v) * 255);
+      px[p + 2] = 0;
+      px[p + 3] = 255;                    /* opaque: partial alpha would be read as premultiplication */
+    }
+    cx.putImageData(im, 0, 0);
+    mask.dist = dist;
+    mask.image = c;
+    return mask;
+  }
+
+  /**
+   * The shape as a field can use it, plus where it belongs in lattice space:
+   * the box the image is meant to fill, in the same world coordinates the tiles
+   * are drawn in. The app paints this box through the very transform it draws
+   * the tiles with, which is the only way the contour a field lights up is the
+   * contour the quadtree subdivided rather than a copy of it that is nearby.
+   *
+   * Image row 0 is the box's top edge (grid row 0 is v = +1, the same direction
+   * the tiling's y runs in), so the box is reported as lattice bounds with y1
+   * above y0.
+   */
+  function shapeImage() {
+    const m = currentMask();
+    if (!m) return null;
+    ensureEdges(m);
+    const map = mapOf(app.lattice());
+    return {
+      img: m.image,
+      x0: map.cx - map.half, y0: map.cy - map.half,
+      x1: map.cx + map.half, y1: map.cy + map.half
+    };
   }
 
   async function loadFile(file) {
@@ -236,7 +350,7 @@
         cov[y * H + x] = raw[sy * w + sx] >= t ? 1 : 0;
       }
     }
-    F.mask = { w: W, h: H, cov, sat: null, source: 'mask' };
+    F.mask = { w: W, h: H, cov, sat: null, image: null, source: 'mask' };
     F.shape = 'custom';
     F.name = String(name || 'mask').replace(/^.*[\\/]/, '');
     F.tiles = null; F.sig = '';
@@ -597,6 +711,9 @@
     viewBounds: viewBounds,
     onShow: wireUI,
     onRedraw: syncLabel,
+    /* The one tab with a shape to stand on, and so the one tab whose ground and
+     * ink fields can be told where the contour is (see shapeImage above). */
+    shapeImage: shapeImage,
     share: share
   });
 
@@ -604,6 +721,7 @@
   app.hooks.fill = {
     loadFile, adoptMask, build, audit, viewBounds, currentMask, ensureSat,
     coverOf, mapOf, frameShapeArea, depthCap, edgeDepth, innerDepth, wireUI, syncLabel,
+    shapeImage, ensureEdges,
     fileNameStub, hasMask: () => !!F.mask, state: () => F, shapes: SHAPES,
     share, readShare,
     maskEdge: FILL_MASK_EDGE, minPx: FILL_MIN_PX, maxDepthLimit: FILL_MAX_DEPTH
