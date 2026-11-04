@@ -13,7 +13,8 @@ which is documented as a rule under *"How big is a tile?"* in `src/engine.js` an
 length below; and the ground the tiles sit on, which is *The ground: ten fields that move
 under the tiles*.
 
-## Status (Generator + Photo + animated ground + animated ink; Mandala tried and removed)
+## Status (Generator + Photo + animated ground + animated ink + a field that follows
+the Fill shape's outline; Mandala tried and removed)
 - ENGINE (`src/engine.js`) = literal port of Carlson's Wolfram package
   (`mstp/MultiScaleTruchetPatterns.wl`). Validated against Python oracle
   `dev/port.py` — measured tile by tile by the gates listed under *Running the gates*.
@@ -23,7 +24,7 @@ under the tiles*.
   `ready()`, `tiles(lattice)`, `picker(tiles)`, optional
   `onShow`/`onRedraw`/`viewBounds`/`mode`/`share`. Live tabs: **Generator**,
   **Photo** and **Fill** (Composer is still a placeholder).
-  `node build.js` -> `dist/truchet.html` (single file, ~173 KB: engine + shaders + app +
+  `node build.js` -> `dist/truchet.html` (single file, ~204 KB: engine + shaders + app +
   photo + fill inlined).
   Always open `index.html` with a cache-buster (`?v=<commit>`) when verifying.
 - Photo tab (`src/photo.js`): Carlson's quadtree multi-scale subdivision driven
@@ -463,7 +464,7 @@ is reported instead of hidden.
   now zooms to the wing-bounded box (tile content looks smaller). Consider
   padding/zoom tuning for previews: maybe previews look "wrong" simply due to
   framing, not shapes!!  <-- ALSO CHECK THIS: compare old vs new preview scale.
-- `src/style.css`, `index.html`, `build.js`, `dist/truchet.html` (~173 KB).
+- `src/style.css`, `index.html`, `build.js`, `dist/truchet.html` (~204 KB).
 - `src/shaders.js` - the fields. Ten field bodies over one shared preamble, each a
   function `vec3 field(vec2 p, float t)`; two thin programs wrap the same bodies for the
   two jobs: `GROUND_MAIN` (`gl_FragColor = vec4(finish(col), 1.0)`, opaque, no mask) and
@@ -593,12 +594,16 @@ published build once matched a four-script block in `index.html` with a literal 
 `\n`, so a fresh Windows checkout made the match fail silently and the build stopped with
 "external references remain" while the shipped file was fine. Matching is tolerant now.
 
-**Not deployed yet.** The fields — under the tiles and on the ink — are built and gated
-locally; the Pages site still serves the last published build. `dist/truchet.html` is 172.5 KB
-at the moment of writing (engine + shaders + app + photo + fill inlined). Publishing is the
-user's call, not a step to assume. Before publishing, know that `dev/_ressqa.py` measured every
-frame format × long edge × tab with both field controls in place, including an ink field over a
-field ground: the export size list and the new controls have been seen together.
+**Deployed by the push, so push is the user's call.** Pages deploys from `main` at `/`,
+which means a push of `main` publishes: the live page serves the repo's own
+`index.html` + `src/`, and the single-file build at `.../dist/truchet.html` is the
+committed artifact (204 KB at the moment of writing - engine + shaders + app + photo +
+fill inlined). Everything the previous paragraph called "not deployed yet" went out with
+the push of 2026-11-04: the fields under the tiles, the fields on the ink, the coarse
+lattice wide frames stand on, and the contour field that follows a Fill shape's outline.
+What was measured before that push: `dev/_ressqa.py` on every frame format × long edge ×
+tab with both field controls in place, including an ink field over a field ground, and
+`dev/_shapeqa.py` on the contour at export sizes under both fits.
 
 ## Running the gates
 
